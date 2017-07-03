@@ -15,12 +15,10 @@ Signature = "$Windows NT$"
 _1 = %cdname%,%cdtagfile%,,""
 
 [SourceDisksNames.x86]
-;1 = %cdname%,%cdtagfilei%,,\i386
-1 = %cdname%,%cdtagfilei%,,\reactos
+1 = %cdname%,%cdtagfilei%,,\i386
 
 [SourceDisksNames.amd64]
-;1 = %cdname%,%cdtagfilea%,,\amd64
-1 = %cdname%,%cdtagfilei%,,\reactos
+1 = %cdname%,%cdtagfilea%,,\amd64
 
 ;
 ; The directories listed in the [Directories] or [WinntDirectories] sections
@@ -43,7 +41,7 @@ _1 = %cdname%,%cdtagfile%,,""
 
 [DiskSpaceRequirements]
 ; Required free system partition disk space in MB
-FreeSysPartDiskSpace=450
+FreeSysPartDiskSpace = 450
 
 ;
 ; The [SourceDisksFiles] section lists all the files available to the
@@ -221,7 +219,7 @@ disk = disk.sys
 inport = inport.sys
 
 [Cabinets]
-Cabinet=reactos.cab
+Cabinet = reactos.cab
 
 [SetupData]
 DefaultPath = \ReactOS
@@ -488,7 +486,6 @@ Default = "XT-, AT- or extended keyboard (83-105 keys)"
 00000490 = "Walon"
 ;00000435 = "Zulu"
 
-
 [KeyboardLayout]
 0000041C = "Albanian"
 00000401 = "Arabic (101)"
@@ -676,5 +673,9 @@ AddReg = registry.inf,AddReg
 [HiveInfs.Upgrade]
 DelReg = registry.inf,DelReg
 AddReg = registry.inf,AddReg
+
+[Strings]
+cdname      = "ReactOS Installation Media"
+productname = "ReactOS"
 
 ; EOF

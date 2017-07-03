@@ -97,4 +97,4 @@ endif()
 
 add_dependencies(rosload bugcodes asm xdk)
 
-add_cd_file(TARGET rosload DESTINATION loader NO_CAB FOR bootcd regtest livecd hybridcd)
+add_cd_file(TARGET rosload DESTINATION loader NO_CAB FOR bootcd regtest)
