@@ -514,16 +514,21 @@ LoadReactOSSetup(
 
     static PCSTR SourcePaths[] =
     {
-        "", /* Only for floppy boot */
+        "", /* Keep first to optimize TXTSETUP.SIF search on floppy boot */
 #if defined(_M_IX86)
         "I386\\",
+#elif defined(_M_AMD64)
+        "AMD64\\",
+#elif defined(_M_ARM)
+        "ARM\\",
+#elif defined(_M_ARM64)
+        "ARM64\\",
 #elif defined(_M_MPPC)
         "PPC\\",
 #elif defined(_M_MRX000)
         "MIPS\\",
 #endif
         "reactos\\",
-        NULL
     };
 
     /* Retrieve the (mandatory) boot type */
@@ -624,25 +629,37 @@ LoadReactOSSetup(
     }
 
     /* Check if we booted from floppy */
-    BootFromFloppy = strstr(BootPath, "fdisk") != NULL;
+    BootFromFloppy = !!strstr(BootPath, ")fdisk(");
+    // FIXME: Use for implementing disk tag check when booting using multiple floppies.
+    DBG_UNREFERENCED_LOCAL_VARIABLE(BootFromFloppy);
 
-    /* Open 'txtsetup.sif' from any of the source paths */
+    /* Open 'TXTSETUP.SIF' from any of the source paths */
     FileName = BootPath + strlen(BootPath);
-    for (i = BootFromFloppy ? 0 : 1; ; i++)
+    for (i = 0;; ++i)
     {
-        SystemPath = SourcePaths[i];
-        if (!SystemPath)
+        if (i >= RTL_NUMBER_OF(SourcePaths))
         {
             UiMessageBox("Failed to open txtsetup.sif");
             return ENOENT;
         }
+        SystemPath = SourcePaths[i];
+
+        /* Adjust the tentative BootPath */
         FileNameLength = (ULONG)(sizeof(BootPath) - (FileName - BootPath)*sizeof(CHAR));
         RtlStringCbCopyA(FileName, FileNameLength, SystemPath);
+
+        /* Try to open TXTSETUP.SIF from this BootPath */
         RtlStringCbCopyA(FilePath, sizeof(FilePath), BootPath);
         RtlStringCbCatA(FilePath, sizeof(FilePath), "txtsetup.sif");
         if (InfOpenFile(&InfHandle, FilePath, &ErrorLine))
         {
+            /* Found and opened: TXTSETUP.SIF is in the correct BootPath */
             break;
+        }
+        else
+        {
+            if (ErrorLine != -1)
+                UiMessageBox("Error in %s at line %lu", FilePath, ErrorLine);
         }
     }
 
