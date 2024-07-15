@@ -1768,7 +1768,7 @@ FASTCALL
 xHalIoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
                          IN ULONG SectorSize,
                          IN BOOLEAN ReturnRecognizedPartitions,
-                         IN OUT PDRIVE_LAYOUT_INFORMATION *PartitionBuffer)
+                         OUT PDRIVE_LAYOUT_INFORMATION *PartitionBuffer)
 {
     KEVENT Event;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -2697,7 +2697,7 @@ FASTCALL
 IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
                      IN ULONG SectorSize,
                      IN BOOLEAN ReturnRecognizedPartitions,
-                     IN OUT PDRIVE_LAYOUT_INFORMATION *PartitionBuffer)
+                     OUT PDRIVE_LAYOUT_INFORMATION *PartitionBuffer)
 {
     return HALDISPATCH->HalIoReadPartitionTable(DeviceObject,
                                                 SectorSize,
