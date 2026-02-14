@@ -1,8 +1,10 @@
 /*
- * COPYRIGHT:   See COPYING in the top level directory
  * PROJECT:     ReactOS Sound Volume Control
- * FILE:        base/applications/sndvol32/dialog.c
- * PROGRAMMERS: Johannes Anderwald
+ * LICENSE:     LGPL-2.1-or-later (https://spdx.org/licenses/LGPL-2.1-or-later)
+ * PURPOSE:     Dialog control routines
+ * COPYRIGHT:   Copyright 2011 Johannes Anderwald <johannes.anderwald@reactos.org>
+ *              Copyright 2018-2019 Eric Kohl <eric.kohl@reactos.org>
+ *              Copyright 2026 Vitaly Orekhov <vkvo2000@vivaldi.net>
  */
 
 #include "sndvol32.h"
