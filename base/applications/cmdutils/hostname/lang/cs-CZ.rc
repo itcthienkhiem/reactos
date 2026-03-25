@@ -7,7 +7,7 @@ LANGUAGE LANG_CZECH, SUBLANG_DEFAULT
 
 STRINGTABLE
 BEGIN
-    IDS_USAGE "Vypíše současný název hostitele.\n\nhostname"
-    IDS_NOSET "hostname -s není podporováno."
-    IDS_ERROR "Win32 chyba"
+    IDS_USAGE "\nVypíše současný název hostitele.\n\nhostname\n"
+    IDS_NOSET "sethostname: Open the ""Computer Name"" tab in the ""System"" Control Panel applet\nto change the host name.\nhostname -s není podporováno.\n"
+    IDS_ERROR "Chyba: "
 END
