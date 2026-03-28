@@ -67,8 +67,9 @@ typedef struct
 
 typedef struct
 {
-    const INetCfgComponentPropertyUi *lpVtbl;
-    const INetCfgComponentControl *lpVtblCompControl;
+    const INetCfgComponentControl *lpVtbl;
+    const INetCfgComponentPropertyUi *lpVtblCompPropertyUi;
+    const INetCfgComponentSetup *lpVtblCompSetup;
     LONG ref;
     IUnknown *pUnknown;
     INetCfg *pNCfg;
@@ -114,9 +115,14 @@ typedef struct
     UINT MaxNum;
 } TcpipPortSettings;
 
-static __inline LPTcpipConfNotifyImpl impl_from_INetCfgComponentControl(INetCfgComponentControl *iface)
+static __inline LPTcpipConfNotifyImpl impl_from_INetCfgComponentPropertyUi(INetCfgComponentPropertyUi *iface)
 {
-    return (TcpipConfNotifyImpl*)((char *)iface - FIELD_OFFSET(TcpipConfNotifyImpl, lpVtblCompControl));
+    return (TcpipConfNotifyImpl*)((char *)iface - FIELD_OFFSET(TcpipConfNotifyImpl, lpVtblCompPropertyUi));
+}
+
+static __inline LPTcpipConfNotifyImpl impl_from_INetCfgComponentSetup(INetCfgComponentSetup *iface)
+{
+    return (TcpipConfNotifyImpl*)((char *)iface - FIELD_OFFSET(TcpipConfNotifyImpl, lpVtblCompSetup));
 }
 
 INT GetSelectedItem(HWND hDlgCtrl);
@@ -2727,6 +2733,83 @@ TcpipBasicDlg(
     return FALSE;
 }
 
+VOID
+FreeFilterSettings(
+    TcpFilterSettings *pFilter)
+{
+    if (pFilter == NULL)
+        return;
+
+    if (pFilter->szTCPAllowedPorts)
+        CoTaskMemFree(pFilter->szTCPAllowedPorts);
+
+    if (pFilter->szUDPAllowedPorts)
+        CoTaskMemFree(pFilter->szUDPAllowedPorts);
+
+    if (pFilter->szRawIPAllowedProtocols)
+        CoTaskMemFree(pFilter->szRawIPAllowedProtocols);
+
+    CoTaskMemFree(pFilter);
+}
+
+VOID
+FreeDNSSettings(
+    TcpipAdvancedDNSDlgSettings *pDNS)
+{
+    if (pDNS == NULL)
+        return;
+
+    if (pDNS->szSearchList)
+        CoTaskMemFree(pDNS->szSearchList);
+
+    CoTaskMemFree(pDNS);
+}
+
+VOID
+FreeSettings(
+    TcpipSettings *pSettings)
+{
+    IP_ADDR *NextIp;
+
+    if (pSettings == NULL)
+        return;
+
+    /* Free IpAdresses */
+    while (pSettings->Ip)
+    {
+        NextIp = pSettings->Ip->Next;
+        CoTaskMemFree(pSettings->Ip);
+        pSettings->Ip = NextIp;
+    }
+
+    /* Free NameServers */
+    while (pSettings->Ns)
+    {
+        NextIp = pSettings->Ns->Next;
+        CoTaskMemFree(pSettings->Ns);
+        pSettings->Ns = NextIp;
+    }
+
+    /* Free Gateways */
+    while (pSettings->Gw)
+    {
+        NextIp = pSettings->Gw->Next;
+        CoTaskMemFree(pSettings->Gw);
+        pSettings->Gw = NextIp;
+    }
+
+    /* Free Filter Settings */
+    if (pSettings->pFilter)
+        FreeFilterSettings(pSettings->pFilter);
+
+    /* Free DNS Settings */
+    if (pSettings->pDNS)
+        FreeDNSSettings(pSettings->pDNS);
+
+    CoTaskMemFree(pSettings);
+}
+
+
 /***************************************************************
  * INetCfgComponentPropertyUi interface
  */
@@ -2734,62 +2817,33 @@ TcpipBasicDlg(
 HRESULT
 WINAPI
 INetCfgComponentPropertyUi_fnQueryInterface(
-    INetCfgComponentPropertyUi * iface,
+    INetCfgComponentPropertyUi *iface,
     REFIID iid,
-    LPVOID * ppvObj)
+    LPVOID *ppvObj)
 {
-    //LPOLESTR pStr;
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
-
-    *ppvObj = NULL;
-
-
-    if (IsEqualIID (iid, &IID_IUnknown) ||
-        IsEqualIID (iid, &IID_INetCfgComponentPropertyUi))
-    {
-        *ppvObj = This;
-        INetCfgComponentPropertyUi_AddRef(iface);
-        return S_OK;
-    }
-    else if (IsEqualIID(iid, &IID_INetCfgComponentControl))
-    {
-        *ppvObj = (LPVOID*)&This->lpVtblCompControl;
-        INetCfgComponentPropertyUi_AddRef(iface);
-        return S_OK;
-    }
-
-    //StringFromCLSID(iid, &pStr);
-    //MessageBoxW(NULL, pStr, L"INetConnectionPropertyUi_fnQueryInterface", MB_OK);
-    //CoTaskMemFree(pStr);
-
-    return E_NOINTERFACE;
+    TRACE("INetCfgComponentPropertyUi_fnQueryInterface()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
+    return INetCfgComponentControl_QueryInterface((INetCfgComponentControl*)This, iid, ppvObj);
 }
-
 
 ULONG
 WINAPI
 INetCfgComponentPropertyUi_fnAddRef(
-    INetCfgComponentPropertyUi * iface)
+    INetCfgComponentPropertyUi *iface)
 {
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
-    ULONG refCount = InterlockedIncrement(&This->ref);
-
-    return refCount;
+    TRACE("INetCfgComponentPropertyUi_fnAddRef()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
+    return INetCfgComponentControl_AddRef((INetCfgComponentControl*)This);
 }
 
 ULONG
 WINAPI
 INetCfgComponentPropertyUi_fnRelease(
-    INetCfgComponentPropertyUi * iface)
+    INetCfgComponentPropertyUi *iface)
 {
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
-    ULONG refCount = InterlockedDecrement(&This->ref);
-
-    if (!refCount)
-    {
-       CoTaskMemFree(This);
-    }
-    return refCount;
+    TRACE("INetCfgComponentPropertyUi_fnRelease()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
+    return INetCfgComponentControl_Release((INetCfgComponentControl*)This);
 }
 
 HRESULT
@@ -2798,9 +2852,11 @@ INetCfgComponentPropertyUi_fnQueryPropertyUi(
     INetCfgComponentPropertyUi * iface,
     IUnknown *pUnkReserved)
 {
+    TRACE("INetCfgComponentPropertyUi_fnQueryPropertyUi()\n");
+
     INetLanConnectionUiInfo * pLanInfo;
     HRESULT hr;
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
 
     hr = IUnknown_QueryInterface(pUnkReserved, &IID_INetLanConnectionUiInfo, (LPVOID*)&pLanInfo);
     if (FAILED(hr))
@@ -2820,7 +2876,8 @@ INetCfgComponentPropertyUi_fnSetContext(
     INetCfgComponentPropertyUi * iface,
     IUnknown *pUnkReserved)
 {
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
+    TRACE("INetCfgComponentPropertyUi_fnSetContext()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
 
     if (!iface || !pUnkReserved)
         return E_POINTER;
@@ -3097,14 +3154,10 @@ INetCfgComponentPropertyUi_fnMergePropPages(
     HWND hwndParent,
     LPCWSTR *pszStartPage)
 {
+    TRACE("INetCfgComponentPropertyUi_fnMergePropPages()\n");
     HPROPSHEETPAGE * hppages;
     UINT NumPages;
-    HRESULT hr;
-    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
-
-    hr = Initialize(This);
-    if (FAILED(hr))
-        return hr;
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentPropertyUi(iface);
 
     if (This->pCurrentConfig->DhcpEnabled)
         NumPages = 2;
@@ -3157,7 +3210,6 @@ MessageBoxW(NULL, L"INetCfgComponentPropertyUi_fnApplyProperties", NULL, MB_OK);
     return S_OK;
 }
 
-
 HRESULT
 WINAPI
 INetCfgComponentPropertyUi_fnCancelProperties(
@@ -3187,44 +3239,91 @@ static const INetCfgComponentPropertyUiVtbl vt_NetCfgComponentPropertyUi =
 HRESULT
 WINAPI
 INetCfgComponentControl_fnQueryInterface(
-    INetCfgComponentControl * iface,
+    INetCfgComponentControl *iface,
     REFIID iid,
-    LPVOID * ppvObj)
+    LPVOID *ppvObj)
 {
-    TcpipConfNotifyImpl * This = impl_from_INetCfgComponentControl(iface);
-    return INetCfgComponentPropertyUi_QueryInterface((INetCfgComponentPropertyUi*)This, iid, ppvObj);
+    TRACE("INetCfgComponentControl_fnQueryInterface()\n");
+    TcpipConfNotifyImpl *This = (TcpipConfNotifyImpl*)iface;
+
+    *ppvObj = NULL;
+
+    if (IsEqualIID (iid, &IID_IUnknown) ||
+        IsEqualIID (iid, &IID_INetCfgComponentControl))
+    {
+        *ppvObj = This;
+        INetCfgComponentControl_AddRef(iface);
+        return S_OK;
+    }
+    else if (IsEqualIID(iid, &IID_INetCfgComponentPropertyUi))
+    {
+        *ppvObj = (LPVOID*)&This->lpVtblCompPropertyUi;
+        INetCfgComponentControl_AddRef(iface);
+        return S_OK;
+    }
+    else if (IsEqualIID(iid, &IID_INetCfgComponentSetup))
+    {
+        *ppvObj = (LPVOID*)&This->lpVtblCompSetup;
+        INetCfgComponentControl_AddRef(iface);
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
 }
 
 ULONG
 WINAPI
 INetCfgComponentControl_fnAddRef(
-    INetCfgComponentControl * iface)
+    INetCfgComponentControl *iface)
 {
-    TcpipConfNotifyImpl * This = impl_from_INetCfgComponentControl(iface);
-    return INetCfgComponentPropertyUi_AddRef((INetCfgComponentPropertyUi*)This);
+    TRACE("INetCfgComponentControl_fnAddRef()\n");
+    TcpipConfNotifyImpl *This = (TcpipConfNotifyImpl*)iface;
+    ULONG refCount = InterlockedIncrement(&This->ref);
+
+    return refCount;
 }
 
 ULONG
 WINAPI
 INetCfgComponentControl_fnRelease(
-    INetCfgComponentControl * iface)
+    INetCfgComponentControl *iface)
 {
-    TcpipConfNotifyImpl * This = impl_from_INetCfgComponentControl(iface);
-    return INetCfgComponentPropertyUi_Release((INetCfgComponentPropertyUi*)This);
+    TRACE("INetCfgComponentControl_fnRelease()\n");
+    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
+    ULONG refCount = InterlockedDecrement(&This->ref);
+
+    if (!refCount)
+    {
+        if (This->pCurrentConfig)
+            FreeSettings(This->pCurrentConfig);
+        CoTaskMemFree(This);
+    }
+    return refCount;
 }
 
 HRESULT
 WINAPI
 INetCfgComponentControl_fnInitialize(
-    INetCfgComponentControl * iface,
+    INetCfgComponentControl *iface,
     INetCfgComponent *pIComp,
     INetCfg *pINetCfg,
     BOOL fInstalling)
 {
-    TcpipConfNotifyImpl * This = impl_from_INetCfgComponentControl(iface);
+    TRACE("INetCfgComponentControl_fnInitialize()\n");
+    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
+    HRESULT hr;
 
     This->pNCfg = pINetCfg;
     This->pNComp = pIComp;
+
+    hr = Initialize(This);
+    if (FAILED(hr))
+    {
+        ERR("INetCfgComponentControl_fnInitialize failed\n");
+        return hr;
+    }
+
+    TRACE("INetCfgComponentControl_fnInitialize success\n");
 
     return S_OK;
 }
@@ -3322,7 +3421,7 @@ INetCfgComponentControl_fnApplyRegistryChanges(
     ULONG NTEInstance;
     DWORD DhcpApiVersion;
 
-    TcpipConfNotifyImpl * This = impl_from_INetCfgComponentControl(iface);
+    TcpipConfNotifyImpl * This = (TcpipConfNotifyImpl*)iface;
 
     pCurrentConfig = This->pCurrentConfig;
     This->pCurrentConfig = NULL;
@@ -3355,7 +3454,11 @@ INetCfgComponentControl_fnApplyRegistryChanges(
     }
 
     if (FAILED(StringFromCLSID(&This->NetCfgInstanceId, &pStr)))
+    {
+        if (pOldConfig)
+            FreeSettings(pOldConfig);
         return E_FAIL;
+    }
 
     swprintf(szBuffer, L"SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\%s", pStr);
     CoTaskMemFree(pStr);
@@ -3547,6 +3650,10 @@ INetCfgComponentControl_fnApplyRegistryChanges(
 
         RegCloseKey(hKey);
     }
+
+    if (pOldConfig)
+        FreeSettings(pOldConfig);
+
     return S_OK;
 }
 
@@ -3580,6 +3687,95 @@ static const INetCfgComponentControlVtbl vt_NetCfgComponentControl =
     INetCfgComponentControl_fnCancelChanges
 };
 
+
+/***************************************************************
+ * INetCfgComponentSetup interface
+ */
+
+HRESULT
+WINAPI
+INetCfgComponentSetup_fnQueryInterface(
+    INetCfgComponentSetup *iface,
+    REFIID iid,
+    LPVOID *ppvObj)
+{
+    TRACE("INetCfgComponentSetup_fnQueryInterface()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentSetup(iface);
+    return INetCfgComponentControl_QueryInterface((INetCfgComponentControl*)This, iid, ppvObj);
+}
+
+ULONG
+WINAPI
+INetCfgComponentSetup_fnAddRef(
+    INetCfgComponentSetup *iface)
+{
+    TRACE("INetCfgComponentSetup_fnAddRef()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentSetup(iface);
+    return INetCfgComponentControl_AddRef((INetCfgComponentControl*)This);
+}
+
+ULONG
+WINAPI
+INetCfgComponentSetup_fnRelease(
+    INetCfgComponentSetup *iface)
+{
+    TRACE("INetCfgComponentSetup_fnRelease()\n");
+    TcpipConfNotifyImpl *This = impl_from_INetCfgComponentSetup(iface);
+    return INetCfgComponentControl_Release((INetCfgComponentControl*)This);
+}
+
+HRESULT
+WINAPI
+INetCfgComponentSetup_fnInstall(
+    INetCfgComponentSetup *iface,
+    DWORD dwSetupFlags)
+{
+    TRACE("INetCfgComponentSetup_fnInstall()\n");
+    return S_OK;
+}
+
+HRESULT
+WINAPI
+INetCfgComponentSetup_fnUpgrade(
+    INetCfgComponentSetup *iface,
+    DWORD dwSetupFlags,
+    DWORD dwUpgradeFromBuildNo)
+{
+    TRACE("INetCfgComponentSetup_fnUpgrade()\n");
+    return S_OK;
+}
+
+HRESULT
+WINAPI
+INetCfgComponentSetup_fnReadAnswerFile(
+    INetCfgComponentSetup *iface,
+    LPCWSTR pszwAnswerFile,
+    LPCWSTR pszwAnswerSections)
+{
+    TRACE("INetCfgComponentSetup_fnReadAnswerFile()\n");
+    return S_OK;
+}
+
+HRESULT
+WINAPI
+INetCfgComponentSetup_fnRemoving(
+    INetCfgComponentSetup *iface)
+{
+    TRACE("INetCfgComponentSetup_fnRemoving()\n");
+    return S_OK;
+}
+
+static const INetCfgComponentSetupVtbl vt_NetCfgComponentSetup =
+{
+    INetCfgComponentSetup_fnQueryInterface,
+    INetCfgComponentSetup_fnAddRef,
+    INetCfgComponentSetup_fnRelease,
+    INetCfgComponentSetup_fnInstall,
+    INetCfgComponentSetup_fnUpgrade,
+    INetCfgComponentSetup_fnReadAnswerFile,
+    INetCfgComponentSetup_fnRemoving
+};
+
 HRESULT
 WINAPI
 TcpipConfigNotify_Constructor (IUnknown * pUnkOuter, REFIID riid, LPVOID * ppv)
@@ -3594,19 +3790,20 @@ TcpipConfigNotify_Constructor (IUnknown * pUnkOuter, REFIID riid, LPVOID * ppv)
         return E_OUTOFMEMORY;
 
     This->ref = 1;
-    This->lpVtbl = (const INetCfgComponentPropertyUi*)&vt_NetCfgComponentPropertyUi;
-    This->lpVtblCompControl = (const INetCfgComponentControl*)&vt_NetCfgComponentControl;
+    This->lpVtbl = (const INetCfgComponentControl*)&vt_NetCfgComponentControl;
+    This->lpVtblCompPropertyUi = (const INetCfgComponentPropertyUi*)&vt_NetCfgComponentPropertyUi;
+    This->lpVtblCompSetup = (const INetCfgComponentSetup*)&vt_NetCfgComponentSetup;
     This->pNCfg = NULL;
     This->pUnknown = NULL;
     This->pNComp = NULL;
     This->pCurrentConfig = NULL;
 
-    if (!SUCCEEDED (INetCfgComponentPropertyUi_QueryInterface ((INetCfgComponentPropertyUi*)This, riid, ppv)))
+    if (!SUCCEEDED (INetCfgComponentControl_QueryInterface ((INetCfgComponentPropertyUi*)This, riid, ppv)))
     {
-        INetCfgComponentPropertyUi_Release((INetCfgComponentPropertyUi*)This);
+        INetCfgComponentControl_Release((INetCfgComponentPropertyUi*)This);
         return E_NOINTERFACE;
     }
 
-    INetCfgComponentPropertyUi_Release((INetCfgComponentPropertyUi*)This);
+    INetCfgComponentControl_Release((INetCfgComponentPropertyUi*)This);
     return S_OK;
 }
