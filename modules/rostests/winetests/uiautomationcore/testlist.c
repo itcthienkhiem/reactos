@@ -5,12 +5,10 @@
 #include <oleauto.h>
 #include <wine/test.h>
 
-extern void func_container(void);
-extern void func_provider(void);
+extern void func_uiautomation(void);
 
 const struct test winetest_testlist[] =
 {
-    { "container", func_container },
-    { "provider", func_provider },
+    { "uiautomation", func_uiautomation },
     { 0, 0 }
 };
