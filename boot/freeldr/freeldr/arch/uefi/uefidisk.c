@@ -20,55 +20,7 @@ DBG_DEFAULT_CHANNEL(DISK);
 /* Maximum block size we support (8KB) - filters out flash devices */
 #define MAX_SUPPORTED_BLOCK_SIZE 8192
 
-/* GPT (GUID Partition Table) definitions */
-#define EFI_PARTITION_HEADER_SIGNATURE    "EFI PART"
-#define EFI_HEADER_LOCATION               1ULL
-#define EFI_TABLE_REVISION                0x00010000
-#define EFI_PARTITION_ENTRIES_BLOCK       2ULL
-#define EFI_PARTITION_ENTRY_COUNT          128
-#define EFI_PARTITION_ENTRY_SIZE          128
-#define EFI_PARTITION_NAME_LENGTH         36
-
-/* GPT Partition Type GUIDs */
-#define EFI_PART_TYPE_UNUSED_GUID \
-    {0x00000000, 0x0000, 0x0000, {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}}
-
-#define EFI_PART_TYPE_EFI_SYSTEM_PART_GUID \
-    {0xc12a7328, 0xf81f, 0x11d2, {0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b}}
-
-#include <pshpack1.h>
-
-/* GPT Table Header */
-typedef struct _GPT_TABLE_HEADER
-{
-    CHAR8   Signature[8];              /* "EFI PART" */
-    UINT32  Revision;                   /* 0x00010000 */
-    UINT32  HeaderSize;                 /* Size of header (usually 92) */
-    UINT32  HeaderCrc32;                /* CRC32 of header */
-    UINT32  Reserved;                   /* Must be 0 */
-    UINT64  MyLba;                      /* LBA of this header */
-    UINT64  AlternateLba;               /* LBA of alternate header */
-    UINT64  FirstUsableLba;             /* First usable LBA for partitions */
-    UINT64  LastUsableLba;              /* Last usable LBA for partitions */
-    EFI_GUID DiskGuid;                  /* Disk GUID */
-    UINT64  PartitionEntryLba;          /* LBA of partition entries array */
-    UINT32  NumberOfPartitionEntries;   /* Number of partition entries */
-    UINT32  SizeOfPartitionEntry;       /* Size of each entry (usually 128) */
-    UINT32  PartitionEntryArrayCrc32;   /* CRC32 of partition entries array */
-} GPT_TABLE_HEADER, *PGPT_TABLE_HEADER;
-
-/* GPT Partition Entry */
-typedef struct _GPT_PARTITION_ENTRY
-{
-    EFI_GUID PartitionTypeGuid;         /* Partition type GUID */
-    EFI_GUID UniquePartitionGuid;       /* Unique partition GUID */
-    UINT64  StartingLba;                /* Starting LBA */
-    UINT64  EndingLba;                  /* Ending LBA */
-    UINT64  Attributes;                 /* Partition attributes */
-    CHAR16  PartitionName[EFI_PARTITION_NAME_LENGTH]; /* Partition name (UTF-16) */
-} GPT_PARTITION_ENTRY, *PGPT_PARTITION_ENTRY;
-
-#include <poppack.h>
+#include "disk/part_gpt.h"
 
 typedef struct tagDISKCONTEXT
 {
@@ -208,158 +160,11 @@ UefiEnsureDiskReadBufferAligned(
 
 /* GPT Support Functions *****************************************************/
 
-static
-BOOLEAN
-UefiReadGptHeader(
-    IN UCHAR DriveNumber,
-    OUT PGPT_TABLE_HEADER GptHeader)
-{
-    ULONG ArcDriveIndex;
-    EFI_BLOCK_IO* BlockIo;
-    EFI_STATUS Status;
-    ULONG BlockSize;
-    ULONG IoAlign;
-    ULONGLONG HeaderLba = EFI_HEADER_LOCATION;
-
-    if (DriveNumber < FIRST_BIOS_DISK)
-        return FALSE;
-
-    ArcDriveIndex = DriveNumber - FIRST_BIOS_DISK;
-    if (ArcDriveIndex >= PcBiosDiskCount || InternalUefiDisk == NULL)
-        return FALSE;
-
-    Status = GlobalSystemTable->BootServices->HandleProtocol(
-        InternalUefiDisk[ArcDriveIndex].Handle,
-        &BlockIoGuid,
-        (VOID**)&BlockIo);
-
-    if (EFI_ERROR(Status) || BlockIo == NULL)
-        return FALSE;
-
-    if (!BlockIo->Media->MediaPresent)
-        return FALSE;
-
-    BlockSize = BlockIo->Media->BlockSize;
-    IoAlign = BlockIo->Media->IoAlign;
-
-    if (!UefiEnsureDiskReadBufferAligned(IoAlign))
-    {
-        ERR("Failed to align disk read buffer for drive %d\n", DriveNumber);
-        return FALSE;
-    }
-
-    /* Read GPT header from LBA 1 */
-    Status = BlockIo->ReadBlocks(
-        BlockIo,
-        BlockIo->Media->MediaId,
-        HeaderLba,
-        BlockSize,
-        DiskReadBuffer);
-
-    if (EFI_ERROR(Status))
-        return FALSE;
-
-    RtlCopyMemory(GptHeader, DiskReadBuffer, sizeof(GPT_TABLE_HEADER));
-
-    /* Verify GPT signature */
-    if (memcmp(GptHeader->Signature, EFI_PARTITION_HEADER_SIGNATURE, 8) != 0)
-        return FALSE;
-
-    /* Verify revision */
-    if (GptHeader->Revision != EFI_TABLE_REVISION)
-    {
-        TRACE("GPT header has unsupported revision: 0x%x\n", GptHeader->Revision);
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-BOOLEAN
-UefiGetGptPartitionEntry(
-    IN UCHAR DriveNumber,
-    IN ULONG PartitionNumber,
-    OUT PPARTITION_TABLE_ENTRY PartitionTableEntry)
-{
-    GPT_TABLE_HEADER GptHeader;
-    GPT_PARTITION_ENTRY GptEntry;
-    ULONG ArcDriveIndex;
-    EFI_BLOCK_IO* BlockIo;
-    EFI_STATUS Status;
-    ULONG BlockSize;
-    ULONGLONG EntryLba;
-    ULONG EntryOffset;
-    ULONG EntriesPerBlock;
-    EFI_GUID UnusedGuid = EFI_PART_TYPE_UNUSED_GUID;
-
-    if (DriveNumber < FIRST_BIOS_DISK)
-        return FALSE;
-
-    ArcDriveIndex = DriveNumber - FIRST_BIOS_DISK;
-    if (ArcDriveIndex >= PcBiosDiskCount || InternalUefiDisk == NULL)
-        return FALSE;
-
-    /* Read GPT header */
-    if (!UefiReadGptHeader(DriveNumber, &GptHeader))
-        return FALSE;
-
-    /* Validate partition number */
-    if (PartitionNumber == 0 || PartitionNumber > GptHeader.NumberOfPartitionEntries)
-        return FALSE;
-
-    /* Convert to 0-based index */
-    ULONG EntryIndex = PartitionNumber - 1;
-
-    Status = GlobalSystemTable->BootServices->HandleProtocol(
-        InternalUefiDisk[ArcDriveIndex].Handle,
-        &BlockIoGuid,
-        (VOID**)&BlockIo);
-
-    if (EFI_ERROR(Status) || BlockIo == NULL)
-        return FALSE;
-
-    BlockSize = BlockIo->Media->BlockSize;
-    EntriesPerBlock = BlockSize / GptHeader.SizeOfPartitionEntry;
-    EntryLba = GptHeader.PartitionEntryLba + (EntryIndex / EntriesPerBlock);
-    EntryOffset = (EntryIndex % EntriesPerBlock) * GptHeader.SizeOfPartitionEntry;
-
-    /* Read the block containing the partition entry */
-    Status = BlockIo->ReadBlocks(
-        BlockIo,
-        BlockIo->Media->MediaId,
-        EntryLba,
-        BlockSize,
-        DiskReadBuffer);
-
-    if (EFI_ERROR(Status))
-        return FALSE;
-
-    /* Extract partition entry */
-    RtlCopyMemory(&GptEntry, (PUCHAR)DiskReadBuffer + EntryOffset, sizeof(GPT_PARTITION_ENTRY));
-
-    /* Check if partition is unused */
-    if (memcmp(&GptEntry.PartitionTypeGuid, &UnusedGuid, sizeof(EFI_GUID)) == 0)
-        return FALSE;
-
-    /* Convert GPT entry to MBR-style PARTITION_TABLE_ENTRY */
-    RtlZeroMemory(PartitionTableEntry, sizeof(*PartitionTableEntry));
-
-    /* Calculate sector offset and count */
-    /* GPT uses LBA, convert to 512-byte sectors */
-    ULONGLONG StartLba = GptEntry.StartingLba;
-    ULONGLONG EndLba = GptEntry.EndingLba;
-    ULONGLONG SectorCount = (EndLba - StartLba + 1);
-
-    /* For GPT, we need to convert from device block size to 512-byte sectors */
-    ULONGLONG StartSector = (StartLba * BlockSize) / 512;
-    ULONGLONG SectorCount512 = (SectorCount * BlockSize) / 512;
-
-    PartitionTableEntry->SectorCountBeforePartition = (ULONG)StartSector;
-    PartitionTableEntry->PartitionSectorCount = (ULONG)SectorCount512;
-    PartitionTableEntry->SystemIndicator = PARTITION_GPT; /* Mark as GPT partition */
-
-    return TRUE;
-}
+// Defined in part_gpt.c
+extern BOOLEAN
+DiskReadGptHeader(
+    _In_ UCHAR DriveNumber,
+    _Out_ PGPT_TABLE_HEADER GptHeader);
 
 static
 BOOLEAN
@@ -396,8 +201,8 @@ UefiGetBootPartitionEntry(
         return FALSE;
     }
 
-    /* For logical partitions, UEFI Block I/O protocol starts at block 0 */
-    /* We need to find which partition it corresponds to by comparing sizes */
+    /* For logical partitions, UEFI Block I/O protocol starts at block 0.
+     * We need to find which partition it corresponds to by comparing sizes. */
     BootPartitionSize = BootBlockIo->Media->LastBlock + 1;
 
     TRACE("Boot partition: Size=%llu blocks, BlockSize=%lu\n",
@@ -415,15 +220,13 @@ UefiGetBootPartitionEntry(
         return TRUE;
     }
 
-    /* Boot handle is a logical partition - find matching partition entry */
-    /* Try to detect GPT first by reading GPT header */
+    /* Boot handle is a logical partition - find matching partition entry.
+     * Try to detect GPT first by reading the GPT header. */
     GPT_TABLE_HEADER GptHeader;
-    BOOLEAN IsGpt = UefiReadGptHeader(DriveNumber, &GptHeader);
-
+    BOOLEAN IsGpt = DiskReadGptHeader(DriveNumber, &GptHeader);
     if (IsGpt)
     {
         /* For GPT, iterate through GPT partition entries */
-        GPT_TABLE_HEADER GptHeader;
         GPT_PARTITION_ENTRY GptEntry;
         ULONG ArcDriveIndex = DriveNumber - FIRST_BIOS_DISK;
         EFI_BLOCK_IO* RootBlockIo;
@@ -433,12 +236,6 @@ UefiGetBootPartitionEntry(
         ULONG EntriesPerBlock;
         EFI_STATUS Status;
         EFI_GUID UnusedGuid = EFI_PART_TYPE_UNUSED_GUID;
-
-        if (!UefiReadGptHeader(DriveNumber, &GptHeader))
-        {
-            ERR("Failed to read GPT header\n");
-            return FALSE;
-        }
 
         Status = GlobalSystemTable->BootServices->HandleProtocol(
             InternalUefiDisk[ArcDriveIndex].Handle,
@@ -469,10 +266,10 @@ UefiGetBootPartitionEntry(
                 continue;
 
             /* Extract partition entry */
-            RtlCopyMemory(&GptEntry, (PUCHAR)DiskReadBuffer + EntryOffset, sizeof(GPT_PARTITION_ENTRY));
+            RtlCopyMemory(&GptEntry, (PUCHAR)DiskReadBuffer + EntryOffset, sizeof(GptEntry));
 
             /* Skip unused partitions */
-            if (memcmp(&GptEntry.PartitionTypeGuid, &UnusedGuid, sizeof(EFI_GUID)) == 0)
+            if (RtlEqualMemory(&GptEntry.PartitionTypeGuid, &UnusedGuid, sizeof(UnusedGuid)))
                 continue;
 
             /* Calculate partition size in blocks */
@@ -515,9 +312,9 @@ UefiGetBootPartitionEntry(
             ULONGLONG PartitionSizeSectors = TempPartitionEntry.PartitionSectorCount;
             ULONGLONG PartitionSizeBlocks;
 
-            /* Convert partition size from MBR sectors (always 512 bytes) to UEFI blocks */
-            /* MBR partition table always uses 512-byte sectors per specification */
-            /* UEFI Block I/O protocol reports sizes in device's BlockSize bytes */
+            /* Convert partition size from MBR sectors (always 512 bytes) to UEFI blocks.
+             * MBR partition table always uses 512-byte sectors per specification.
+             * UEFI Block I/O protocol reports sizes in device's BlockSize bytes. */
             /* Compare in bytes to avoid rounding issues, then convert to boot partition's block size */
             ULONGLONG PartitionSizeBytes = PartitionSizeSectors * 512ULL;
             PartitionSizeBlocks = PartitionSizeBytes / BootBlockIo->Media->BlockSize;
@@ -712,7 +509,6 @@ UefiDiskRead(ULONG FileId, VOID *Buffer, ULONG N, ULONG *Count)
     ULONG ArcDriveIndex;
 
     ASSERT(DiskReadBufferSize > 0);
-
 
     TotalSectors = (N + Context->SectorSize - 1) / Context->SectorSize;
     MaxSectors   = DiskReadBufferSize / Context->SectorSize;
@@ -1158,7 +954,6 @@ BOOLEAN
 UefiSetBootpath(VOID)
 {
     EFI_BLOCK_IO* BootBlockIo = NULL;
-    EFI_BLOCK_IO* RootBlockIo = NULL;
     EFI_STATUS Status;
     ULONG ArcDriveIndex;
 
@@ -1188,21 +983,10 @@ UefiSetBootpath(VOID)
         return FALSE;
     }
 
-    Status = GlobalSystemTable->BootServices->HandleProtocol(
-        InternalUefiDisk[ArcDriveIndex].Handle,
-        &BlockIoGuid,
-        (VOID**)&RootBlockIo);
-
-    if (EFI_ERROR(Status) || RootBlockIo == NULL)
-    {
-        ERR("Failed to get Block I/O protocol for boot root device\n");
-        return FALSE;
-    }
-
     FrldrBootDrive = (FIRST_BIOS_DISK + ArcDriveIndex);
 
-    /* Check if booting from CD-ROM by checking the boot handle properties */
-    /* CD-ROMs have BlockSize=2048 and RemovableMedia=TRUE */
+    /* Check if booting from CD-ROM by checking the boot handle properties.
+     * CD-ROMs have BlockSize=2048 and RemovableMedia=TRUE. */
     if (BootBlockIo->Media->RemovableMedia == TRUE && BootBlockIo->Media->BlockSize == 2048)
     {
         /* Boot Partition 0xFF is the magic value that indicates booting from CD-ROM */
@@ -1220,9 +1004,9 @@ UefiSetBootpath(VOID)
         /* If boot handle is a logical partition, we need to determine which partition number */
         if (BootBlockIo->Media->LogicalPartition)
         {
-            /* For logical partitions, we need to find the partition number */
-            /* This is tricky - we'll use partition 1 as default for now */
-            /* TODO: Properly determine partition number from boot handle */
+            /* For logical partitions, we need to find the partition number.
+             * This is tricky - we'll use partition 1 as default for now. */
+            // TODO: Properly determine partition number from boot handle.
             BootPartition = FIRST_PARTITION;
             TRACE("Boot handle is logical partition, using partition %lu\n", BootPartition);
         }
@@ -1351,8 +1135,8 @@ UefiDiskReadLogicalSectors(
         return FALSE;
     }
 
-    /* Allow access during initialization: check if handle is set up */
-    /* During initialization, Handle is set before GetHarddiskInformation is called */
+    /* Allow access during initialization: check if handle is set up.
+     * During initialization, Handle is set before GetHarddiskInformation is called. */
     if (InternalUefiDisk[ArcDriveIndex].Handle == NULL)
     {
         ERR("Invalid drive number: %d (ArcDriveIndex=%lu, PcBiosDiskCount=%lu, Handle=NULL)\n", 

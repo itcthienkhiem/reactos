@@ -1,6 +1,7 @@
 /*
  * PROJECT:     FreeLoader
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+ *              or MIT (https://spdx.org/licenses/MIT)
  * PURPOSE:     Block Device partition management
  * COPYRIGHT:   Copyright 2002-2003 Brian Palmer <brianp@sginet.com>
  *              Copyright 2019 Stanislav Motylkov <x86corez@gmail.com>
@@ -56,26 +57,32 @@ DiskReadBootRecord(
 
 #include "part_mbr.c"
 #include "part_brfr.c"
+#include "part_gpt.c"
 
 VOID
 DiskDetectPartitionType(
     IN UCHAR DriveNumber)
 {
     MASTER_BOOT_RECORD MasterBootRecord;
-    ULONG Index;
-    ULONG PartitionCount = 0;
-    PPARTITION_TABLE_ENTRY ThisPartitionTableEntry;
-    BOOLEAN GPTProtect = FALSE;
     PARTITION_TABLE_ENTRY PartitionTableEntry;
 
     /* Probe for Master Boot Record */
     if (DiskReadBootRecord(DriveNumber, 0, &MasterBootRecord))
     {
+#if 0
+        ULONG Index, PartitionCount = 0;
+        BOOLEAN GPTProtect = FALSE;
+#else
+        GPT_TABLE_HEADER GptHeader;
+#endif
+
         DiskPartitionType[DriveNumber] = PARTITION_STYLE_MBR;
 
+#if 0
         /* Check for GUID Partition Table */
         for (Index = 0; Index < 4; Index++)
         {
+            PPARTITION_TABLE_ENTRY ThisPartitionTableEntry;
             ThisPartitionTableEntry = &MasterBootRecord.PartitionTable[Index];
 
             if (ThisPartitionTableEntry->SystemIndicator != PARTITION_ENTRY_UNUSED)
@@ -90,6 +97,9 @@ DiskDetectPartitionType(
         }
 
         if (PartitionCount == 1 && GPTProtect)
+#else
+        if (DiskReadGptHeader(DriveNumber, &GptHeader))
+#endif
         {
             DiskPartitionType[DriveNumber] = PARTITION_STYLE_GPT;
         }
@@ -165,16 +175,7 @@ DiskGetPartitionEntry(
         }
         case PARTITION_STYLE_GPT:
         {
-#ifdef UEFIBOOT
-            BOOLEAN UefiGetGptPartitionEntry(
-                IN UCHAR DriveNumber,
-                IN ULONG PartitionNumber,
-                OUT PPARTITION_TABLE_ENTRY PartitionTableEntry);
-            return UefiGetGptPartitionEntry(DriveNumber, PartitionNumber, PartitionTableEntry);
-#else
-            FIXME("DiskGetPartitionEntry() unimplemented for GPT\n");
-            return FALSE;
-#endif
+            return DiskGetGptPartitionEntry(DriveNumber, PartitionNumber, PartitionTableEntry);
         }
         case PARTITION_STYLE_RAW:
         {
