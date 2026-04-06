@@ -13,6 +13,20 @@
 #include <debug.h>
 DBG_DEFAULT_CHANNEL(DISK);
 
+#include "disk/part_gpt.h"
+
+// Defined in part_gpt.c
+extern BOOLEAN
+DiskReadGptHeader(
+    _In_ UCHAR DriveNumber,
+    _Out_ PGPT_TABLE_HEADER GptHeader);
+
+#define GUID_FORMAT_STR "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x"
+#define GUID_ELEMENTS(Guid) \
+    (Guid)->Data1, (Guid)->Data2, (Guid)->Data3, \
+    (Guid)->Data4[0], (Guid)->Data4[1], (Guid)->Data4[2], (Guid)->Data4[3], \
+    (Guid)->Data4[4], (Guid)->Data4[5], (Guid)->Data4[6], (Guid)->Data4[7]
+
 #define FIRST_PARTITION 1
 
 /* DISK IO ERROR SUPPORT *****************************************************/
@@ -77,9 +91,13 @@ DiskInitialize(
     ULONG Checksum, Signature;
     BOOLEAN ValidPartitionTable;
     BOOLEAN IsCdRom;
+    PGUID GptDiskGuid = NULL;
+    GPT_TABLE_HEADER GptHeader;
     PARTITION_TABLE_ENTRY PartitionTableEntry;
     CHAR ArcName[MAX_PATH];
     NTSTATUS NtStatus;
+
+    TRACE("DiskInitialize(0x%02X, '%s', Type: %lu)\n", DriveNumber, DeviceName, DeviceType);
 
     IsCdRom = (DeviceType == CdromController);
     if (IsCdRom)
@@ -128,8 +146,21 @@ DiskInitialize(
             return ENOMEM;
     }
 
+    /* GPT disk signature support */
+    if (DeviceType == DiskPeripheral)
+    {
+        if (DiskReadGptHeader(DriveNumber, &GptHeader))
+            GptDiskGuid = &GptHeader.DiskGuid;
+    }
+    if (GptDiskGuid)
+    {
+        TRACE("Disk 0x%02X is GPT, DiskGuid: {" GUID_FORMAT_STR "}\n",
+              DriveNumber, GUID_ELEMENTS(GptDiskGuid));
+    }
+
     /* Fill out the ARC disk block */
-    AddReactOSArcDiskInfo(DeviceName, Signature, Checksum, ValidPartitionTable);
+    AddReactOSArcDiskInfo(DeviceName, GptDiskGuid, Signature,
+                          Checksum, ValidPartitionTable);
 
     if (pChecksum)
         *pChecksum = Checksum;
