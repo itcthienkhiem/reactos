@@ -37,6 +37,9 @@ typedef enum _PARTITION_TYPE
     DataPartition
 } PARTITION_TYPE, *PPARTITION_TYPE;
 
+static const UNICODE_STRING FloppyPrefix = RTL_CONSTANT_STRING(L"\\Device\\Floppy");
+static const UNICODE_STRING CdPrefix = RTL_CONSTANT_STRING(L"\\Device\\CdRom");
+
 /* PRIVATE FUNCTIONS *********************************************************/
 
 static NTSTATUS
@@ -607,46 +610,29 @@ HalpNextDriveLetter(
     UCHAR i;
     WCHAR Buffer[40];
     UCHAR DriveLetter;
-    UNICODE_STRING FloppyString, CdString, NtDeviceNameU, DosDevice;
+    UNICODE_STRING NtDeviceNameU, DosDevice;
 
     /* Quick path, ask directly the MountMgr
      * to assign the next free drive letter */
     if (NT_SUCCESS(HalpNextMountLetter(DeviceName, &DriveLetter)))
-    {
         return DriveLetter;
-    }
 
     /* We'll allow the MountMgr to fail only for non vital path */
     if (NtDeviceName == NULL || NtSystemPath == NULL)
-    {
-        return -1;
-    }
+        return 0xFF;
 
     /* And for removable devices */
     if (!IsRemovable)
-    {
         return 0;
-    }
 
-    /* Removable might be floppy or cdrom */
-    RtlInitUnicodeString(&FloppyString, L"\\Device\\Floppy");
-    RtlInitUnicodeString(&CdString, L"\\Device\\CdRom");
+    /* The removable device might be a floppy or CD-ROM */
 
-    /* If floppy, start at A */
-    if (RtlPrefixUnicodeString(&FloppyString, DeviceName, TRUE))
-    {
-        DriveLetter = 'A';
-    }
-    /* If CD start at D */
-    else if (RtlPrefixUnicodeString(&CdString, DeviceName, TRUE))
-    {
-        DriveLetter = 'D';
-    }
-    /* For the rest start at C */
+    if (RtlPrefixUnicodeString(&FloppyPrefix, DeviceName, TRUE))
+        DriveLetter = 'A'; /* If floppy, start at A */
+    else if (RtlPrefixUnicodeString(&CdPrefix, DeviceName, TRUE))
+        DriveLetter = 'D'; /* If CD-ROM, start at D */
     else
-    {
-        DriveLetter = 'C';
-    }
+        DriveLetter = 'C'; /* Otherwise, start at C */
 
     /* Now, try to assign a drive letter manually with the MountMgr */
     for (i = DriveLetter; i <= 'Z'; ++i)
@@ -657,9 +643,7 @@ HalpNextDriveLetter(
             if (NT_SUCCESS(RtlAnsiStringToUnicodeString(&NtDeviceNameU, NtDeviceName, TRUE)))
             {
                 if (RtlEqualUnicodeString(&NtDeviceNameU, DeviceName, TRUE))
-                {
                     *NtSystemPath = i;
-                }
 
                 RtlFreeUnicodeString(&NtDeviceNameU);
             }
@@ -682,9 +666,7 @@ HalpNextDriveLetter(
             if (NT_SUCCESS(RtlAnsiStringToUnicodeString(&NtDeviceNameU, NtDeviceName, TRUE)))
             {
                 if (RtlEqualUnicodeString(&NtDeviceNameU, DeviceName, TRUE))
-                {
                     *NtSystemPath = i;
-                }
 
                 RtlFreeUnicodeString(&NtDeviceNameU);
             }
@@ -910,22 +892,22 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
                          OUT PUCHAR NtSystemPath,
                          OUT PSTRING NtSystemPathString)
 {
-    USHORT i;
     PULONG Devices;
     NTSTATUS Status;
-    WCHAR Buffer[50];
     HANDLE FileHandle;
     UCHAR DriveLetter;
-    BOOLEAN SystemFound;
+    BOOLEAN BootableFound;
     IO_STATUS_BLOCK StatusBlock;
     PARTITION_TYPE PartitionType;
-    ANSI_STRING StringA1, StringA2;
-    PSTR Buffer1, Buffer2, LoadOptions;
+    PSTR LoadOptions;
     OBJECT_ATTRIBUTES ObjectAttributes;
     PDRIVE_LAYOUT_INFORMATION LayoutInfo;
     PCONFIGURATION_INFORMATION ConfigInfo;
-    UNICODE_STRING StringU1, StringU2, StringU3;
-    ULONG Increment, DiskCount, RealDiskCount, HarddiskCount, PartitionCount, SystemPartition;
+    UNICODE_STRING DeviceName;
+    ULONG i, Increment, DiskCount, RealDiskCount, HarddiskCount, PartitionCount;
+    ULONG SkipPartition;
+    PWSTR Buffer2;
+    WCHAR Buffer[sizeof("\\Device\\Harddisk4294967295\\Partition4294967295")];
 
     PAGED_CODE();
 
@@ -934,41 +916,41 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     DiskCount = ConfigInfo->DiskCount;
     RealDiskCount = 0;
 
-    /* Allocate two generic string buffers we'll use and reuser later on */
-    Buffer1 = ExAllocatePoolWithTag(NonPagedPool, 128, TAG_FSTUB);
-    Buffer2 = ExAllocatePoolWithTag(NonPagedPool, 64, TAG_FSTUB);
-    if (Buffer1 == NULL || Buffer2 == NULL)
+    /* Allocate a generic string buffer we'll use later on */
+    Buffer2 = ExAllocatePoolWithTag(NonPagedPool, 40 * sizeof(WCHAR), TAG_FSTUB);
+    if (Buffer2 == NULL)
     {
+        /* We cannot fail */
         KeBugCheck(ASSIGN_DRIVE_LETTERS_FAILED);
     }
 
-    /* In case of a remote boot, setup system path */
+    /* In case of a remote boot, setup the system path */
     if (IoRemoteBootClient)
     {
         PSTR Last, Saved;
 
-        /* Find last \ */
+        /* Find the last separator */
         Last = strrchr(LoaderBlock->NtBootPathName, '\\');
         Saved = NULL;
-        /* Misformed name, fail */
         if (Last == NULL)
         {
+            /* Misformed name, fail */
             KeBugCheck(ASSIGN_DRIVE_LETTERS_FAILED);
         }
 
-        /* In case the name was terminated by a \... */
+        /* In case the name was terminated by a separator... */
         if (Last[1] == ANSI_NULL)
         {
-            /* Erase it, save position and find the previous \ */
+            /* Erase it, save its position and find the previous separator */
             *Last = ANSI_NULL;
             Saved = Last;
             Last = strrchr(LoaderBlock->NtBootPathName, '\\');
             *Saved = '\\';
         }
 
-        /* Misformed name, fail */
         if (Last == NULL)
         {
+            /* Misformed name, fail */
             KeBugCheck(ASSIGN_DRIVE_LETTERS_FAILED);
         }
 
@@ -978,141 +960,117 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
         /* And copy the end of the boot path */
         strcpy((PSTR)&NtSystemPath[2], Last);
 
-        /* If we had to remove the trailing \, remove it here too */
+        /* If we had to remove the trailing separator, remove it here too */
         if (Saved != NULL)
         {
             NtSystemPath[strlen((PSTR)NtSystemPath) - 1] = ANSI_NULL;
         }
 
-        /* Setup output string */
+        /* Setup the system path string */
         RtlInitString(NtSystemPathString, (PSTR)NtSystemPath);
     }
 
-    /* For each of our disks, create the physical device DOS device */
+    /* For each disk, create the physical drive DOS device */
     Increment = 0;
-    if (DiskCount != 0)
+    for (i = 0; i < DiskCount; ++i)
     {
-        for (i = 0; i < DiskCount; ++i)
+        /* Setup the device name */
+        swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition0", i);
+        RtlInitUnicodeString(&DeviceName, Buffer);
+
+        /* Open the device */
+        InitializeObjectAttributes(&ObjectAttributes,
+                                   &DeviceName,
+                                   OBJ_CASE_INSENSITIVE,
+                                   NULL,
+                                   NULL);
+        Status = ZwOpenFile(&FileHandle,
+                            SYNCHRONIZE | FILE_READ_DATA,
+                            &ObjectAttributes,
+                            &StatusBlock,
+                            FILE_SHARE_READ,
+                            FILE_SYNCHRONOUS_IO_NONALERT);
+        if (NT_SUCCESS(Status))
         {
-            /* Setup the origin name */
-            sprintf(Buffer1, "\\Device\\Harddisk%d\\Partition%d", i, 0);
-            RtlInitAnsiString(&StringA1, Buffer1);
-            if (!NT_SUCCESS(RtlAnsiStringToUnicodeString(&StringU1, &StringA1, TRUE)))
+            /* If we succeeded, create the link */
+            UNICODE_STRING LinkName;
+            swprintf(Buffer2, L"\\DosDevices\\PhysicalDrive%d", i);
+            RtlInitUnicodeString(&LinkName, Buffer2);
+
+            IoCreateSymbolicLink(&LinkName, &DeviceName);
+            ZwClose(FileHandle);
+
+            RealDiskCount = i + 1;
+        }
+        else
+        {
+            /* Try to cope with holes in the \Device\HarddiskX namespace */
+            if (Increment < 50)
             {
-                /* We cannot fail */
-                KeBugCheck(ASSIGN_DRIVE_LETTERS_FAILED);
-            }
-
-            /* Open the device */
-            InitializeObjectAttributes(&ObjectAttributes,
-                                       &StringU1,
-                                       OBJ_CASE_INSENSITIVE,
-                                       NULL,
-                                       NULL);
-            Status = ZwOpenFile(&FileHandle,
-                                SYNCHRONIZE | FILE_READ_DATA,
-                                &ObjectAttributes,
-                                &StatusBlock,
-                                FILE_SHARE_READ,
-                                FILE_SYNCHRONOUS_IO_NONALERT);
-            if (NT_SUCCESS(Status))
-            {
-                /* If we managed, create the link */
-                sprintf(Buffer2, "\\DosDevices\\PhysicalDrive%d", i);
-                RtlInitAnsiString(&StringA2, Buffer2);
-                Status = RtlAnsiStringToUnicodeString(&StringU2, &StringA2, TRUE);
-                if (NT_SUCCESS(Status))
-                {
-                    IoCreateSymbolicLink(&StringU2, &StringU1);
-                    RtlFreeUnicodeString(&StringU2);
-                }
-
-                ZwClose(FileHandle);
-
-                RealDiskCount = i + 1;
-            }
-
-            RtlFreeUnicodeString(&StringU1);
-
-            if (!NT_SUCCESS(Status))
-            {
-                if (Increment < 50)
-                {
-                    ++Increment;
-                    ++DiskCount;
-                }
+                ++Increment;
+                ++DiskCount;
             }
         }
     }
 
-    /* We are done with our buffers */
-    ExFreePoolWithTag(Buffer1, TAG_FSTUB);
+    /* We are done with the buffer */
     ExFreePoolWithTag(Buffer2, TAG_FSTUB);
 
-    /* Upcase our load options, if any */
+    /* Upcase the load options, if any */
     if (LoaderBlock->LoadOptions != NULL)
-    {
         LoadOptions = _strupr(LoaderBlock->LoadOptions);
-    }
     else
-    {
         LoadOptions = NULL;
-    }
 
-    /* If we boot with /MININT (system hive as volatile) option, assign X letter to boot device */
+    /* If we boot with MININT option (system hive as volatile),
+     * assign the X letter to the OS boot volume. */
     if (LoadOptions != NULL &&
-        strstr(LoadOptions, "MININT") != 0 &&
-        NT_SUCCESS(RtlAnsiStringToUnicodeString(&StringU1, NtDeviceName, TRUE)))
+        strstr(LoadOptions, "MININT") != NULL &&
+        NT_SUCCESS(RtlAnsiStringToUnicodeString(&DeviceName, NtDeviceName, TRUE)))
     {
-        if (NT_SUCCESS(HalpSetMountLetter(&StringU1, 'X')))
-        {
+        if (NT_SUCCESS(HalpSetMountLetter(&DeviceName, 'X')))
             *NtSystemPath = 'X';
-        }
 
-        RtlFreeUnicodeString(&StringU1);
+        RtlFreeUnicodeString(&DeviceName);
     }
 
-    /* Compute our disks derangements */
+    /* Compute the disks derangements */
     DiskCount -= Increment;
-    if (RealDiskCount > DiskCount)
-    {
-        DiskCount = RealDiskCount;
-    }
+    DiskCount = max(DiskCount, RealDiskCount);
     Devices = IopComputeHarddiskDerangements(DiskCount);
 
-    /* Now, start browsing all our disks for assigning drive letters
-     * Here, we'll only handle boot partition and primary partitions
-     */
+    /* Now, start browsing all the disks for assigning drive letters.
+     * Here, we'll only handle the bootable and primary partitions. */
     HarddiskCount = 0;
     for (i = 0; i < DiskCount; ++i)
     {
-        /* Get device ID according to derangements map */
+        /* Get the device ID from the derangements map */
         if (Devices != NULL)
         {
             HarddiskCount = Devices[i];
         }
 
-        /* Query disk layout */
+        /* Query the disk layout */
         swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition0", HarddiskCount);
-        RtlInitUnicodeString(&StringU1, Buffer);
-        if (!NT_SUCCESS(HalpQueryDriveLayout(&StringU1, &LayoutInfo)))
+        RtlInitUnicodeString(&DeviceName, Buffer);
+        if (!NT_SUCCESS(HalpQueryDriveLayout(&DeviceName, &LayoutInfo)))
         {
             LayoutInfo = NULL;
         }
 
-        /* Assume we didn't find system */
-        SystemFound = FALSE;
+        /* Assume we didn't find a bootable partition */
+        BootableFound = FALSE;
         swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, 1);
-        RtlInitUnicodeString(&StringU1, Buffer);
+        RtlInitUnicodeString(&DeviceName, Buffer);
         /* Query partition info for our disk */
-        if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+        if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
         {
             /* It failed, retry for all the partitions */
             for (PartitionCount = 1; ; ++PartitionCount)
             {
                 swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-                RtlInitUnicodeString(&StringU1, Buffer);
-                if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+                RtlInitUnicodeString(&DeviceName, Buffer);
+                if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
                 {
                     break;
                 }
@@ -1120,7 +1078,7 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
                 /* We found a primary partition, assign a drive letter */
                 if (PartitionType == PrimaryPartition)
                 {
-                    HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, 0);
+                    HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, FALSE);
                     break;
                 }
             }
@@ -1130,39 +1088,37 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
             /* All right */
             for (PartitionCount = 2; ; ++PartitionCount)
             {
-                /* If our partition is bootable (MBR) or data (GPT), that's system partition */
+                /* If the partition is bootable (MBR) or data (GPT), we've found it */
                 if (PartitionType == BootablePartition || PartitionType == DataPartition)
                 {
-                    SystemFound = TRUE;
+                    BootableFound = TRUE;
 
                     /* Assign a drive letter and stop here if MBR */
-                    HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, 0);
+                    HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, FALSE);
                     if (PartitionType == BootablePartition)
-                    {
                         break;
-                    }
                 }
 
                 /* Keep looping on all the partitions */
                 swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-                RtlInitUnicodeString(&StringU1, Buffer);
-                if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+                RtlInitUnicodeString(&DeviceName, Buffer);
+                if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
                 {
-                    /* Mount every primary partition if we didn't find system */
-                    if (!SystemFound)
+                    /* Mount every primary partition if we didn't find a bootable partition */
+                    if (!BootableFound)
                     {
                         for (PartitionCount = 1; ; ++PartitionCount)
                         {
                             swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-                            RtlInitUnicodeString(&StringU1, Buffer);
-                            if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+                            RtlInitUnicodeString(&DeviceName, Buffer);
+                            if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
                             {
                                 break;
                             }
 
                             if (PartitionType == PrimaryPartition)
                             {
-                                HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, 0);
+                                HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, FALSE);
                                 break;
                             }
                         }
@@ -1173,7 +1129,7 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
             }
         }
 
-        /* Free layout, we'll reallocate it for next device */
+        /* Free the layout, we'll reallocate it for the next disk */
         if (LayoutInfo != NULL)
         {
             ExFreePoolWithTag(LayoutInfo, TAG_FSTUB);
@@ -1182,44 +1138,37 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
         HarddiskCount = i + 1;
     }
 
-    /* Now, assign logical partitions */
+    /* Now, assign drive letters to logical partitions */
     for (i = 0; i < DiskCount; ++i)
     {
-        /* Get device ID according to derangements map */
-        if (Devices != NULL)
-        {
-            HarddiskCount = Devices[i];
-        }
-        else
-        {
-            HarddiskCount = i;
-        }
+        /* Get the device ID from the derangements map */
+        HarddiskCount = (Devices ? Devices[i] : i);
 
-        /* Query device layout */
+        /* Query the disk layout */
         swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition0", HarddiskCount);
-        RtlInitUnicodeString(&StringU1, Buffer);
-        if (!NT_SUCCESS(HalpQueryDriveLayout(&StringU1, &LayoutInfo)))
+        RtlInitUnicodeString(&DeviceName, Buffer);
+        if (!NT_SUCCESS(HalpQueryDriveLayout(&DeviceName, &LayoutInfo)))
         {
             LayoutInfo = NULL;
         }
 
-        /* And assign drive letter to logical partitions */
+        /* And assign drive letters to logical partitions */
         for (PartitionCount = 1; ; ++PartitionCount)
         {
             swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-            RtlInitUnicodeString(&StringU1, Buffer);
-            if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+            RtlInitUnicodeString(&DeviceName, Buffer);
+            if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
             {
                 break;
             }
 
             if (PartitionType == LogicalPartition)
             {
-                HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, 0);
+                HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, FALSE);
             }
         }
 
-        /* Free layout, we'll reallocate it for next device */
+        /* Free the layout, we'll reallocate it for the next disk */
         if (LayoutInfo != NULL)
         {
             ExFreePoolWithTag(LayoutInfo, 0);
@@ -1229,67 +1178,60 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     /* Now, assign drive letters to everything else */
     for (i = 0; i < DiskCount; ++i)
     {
-        /* Get device ID according to derangements map */
-        if (Devices != NULL)
-        {
-            HarddiskCount = Devices[i];
-        }
-        else
-        {
-            HarddiskCount = i;
-        }
+        /* Get the device ID from the derangements map */
+        HarddiskCount = (Devices ? Devices[i] : i);
 
-        /* Query device layout */
+        /* Query the disk layout */
         swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition0", HarddiskCount);
-        RtlInitUnicodeString(&StringU1, Buffer);
-        if (!NT_SUCCESS(HalpQueryDriveLayout(&StringU1, &LayoutInfo)))
+        RtlInitUnicodeString(&DeviceName, Buffer);
+        if (!NT_SUCCESS(HalpQueryDriveLayout(&DeviceName, &LayoutInfo)))
         {
             LayoutInfo = NULL;
         }
 
-        /* Save system partition if any */
-        SystemPartition = 0;
+        /* Save the bootable or first primary (MBR) partition, if any */
+        SkipPartition = 0;
         for (PartitionCount = 1; ; ++PartitionCount)
         {
             swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-            RtlInitUnicodeString(&StringU1, Buffer);
-            if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+            RtlInitUnicodeString(&DeviceName, Buffer);
+            if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
             {
                 break;
             }
 
-            if ((PartitionType == BootablePartition || PartitionType == PrimaryPartition) && (SystemPartition == 0))
+            if ((PartitionType == BootablePartition || PartitionType == PrimaryPartition) && (SkipPartition == 0))
             {
-                SystemPartition = PartitionCount;
+                SkipPartition = PartitionCount;
             }
         }
 
-        /* And assign drive letter to anything but system partition */
+        /* And assign a drive letter to anything but the bootable partition */
         for (PartitionCount = 1; ; ++PartitionCount)
         {
-            if (PartitionCount != SystemPartition)
+            if (PartitionCount == SkipPartition)
+                continue;
+
+            swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
+            RtlInitUnicodeString(&DeviceName, Buffer);
+            if (!NT_SUCCESS(HalpQueryPartitionType(&DeviceName, LayoutInfo, &PartitionType)))
             {
-                swprintf(Buffer, L"\\Device\\Harddisk%d\\Partition%d", HarddiskCount, PartitionCount);
-                RtlInitUnicodeString(&StringU1, Buffer);
-                if (!NT_SUCCESS(HalpQueryPartitionType(&StringU1, LayoutInfo, &PartitionType)))
+                if (LayoutInfo != NULL)
                 {
-                    if (LayoutInfo != NULL)
-                    {
-                        ExFreePoolWithTag(LayoutInfo, 0);
-                    }
-
-                    break;
+                    ExFreePoolWithTag(LayoutInfo, 0);
                 }
 
-                if (PartitionType == PrimaryPartition || PartitionType == FtPartition)
-                {
-                    HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, 0);
-                }
+                break;
+            }
+
+            if (PartitionType == PrimaryPartition || PartitionType == FtPartition)
+            {
+                HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, FALSE);
             }
         }
     }
 
-    /* We're done with disks, if we have a device map, free it */
+    /* We're done with the disks; free the derangements map */
     if (Devices != NULL)
     {
         ExFreePoolWithTag(Devices, TAG_FSTUB);
@@ -1299,61 +1241,47 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
     for (i = 0; i < ConfigInfo->FloppyCount; ++i)
     {
         swprintf(Buffer, L"\\Device\\Floppy%d", i);
-        RtlInitUnicodeString(&StringU1, Buffer);
-        if (HalpIsOldStyleFloppy(&StringU1))
+        RtlInitUnicodeString(&DeviceName, Buffer);
+        if (HalpIsOldStyleFloppy(&DeviceName))
         {
-            HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, TRUE);
+            HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, TRUE);
         }
     }
 
-    /* And CD drives */
+    /* And CD-ROM drives */
     for (i = 0; i < ConfigInfo->CdRomCount; ++i)
     {
         swprintf(Buffer, L"\\Device\\CdRom%d", i);
-        RtlInitUnicodeString(&StringU1, Buffer);
-        HalpNextDriveLetter(&StringU1, NtDeviceName, NtSystemPath, TRUE);
+        RtlInitUnicodeString(&DeviceName, Buffer);
+        HalpNextDriveLetter(&DeviceName, NtDeviceName, NtSystemPath, TRUE);
     }
 
     /* If not remote boot, handle NtDeviceName */
-    if (!IoRemoteBootClient && NT_SUCCESS(RtlAnsiStringToUnicodeString(&StringU1, NtDeviceName, TRUE)))
+    if (!IoRemoteBootClient && NT_SUCCESS(RtlAnsiStringToUnicodeString(&DeviceName, NtDeviceName, TRUE)))
     {
         /* Assign it a drive letter */
-        DriveLetter = HalpNextDriveLetter(&StringU1, NULL, NULL, TRUE);
+        DriveLetter = HalpNextDriveLetter(&DeviceName, NULL, NULL, TRUE);
         if (DriveLetter != 0)
         {
             if (DriveLetter != 0xFF)
-            {
                 *NtSystemPath = DriveLetter;
-            }
         }
         /* If it fails through the MountMgr, retry manually */
         else
         {
-            RtlInitUnicodeString(&StringU2, L"\\Device\\Floppy");
-            RtlInitUnicodeString(&StringU3, L"\\Device\\CdRom");
-
-            if (RtlPrefixUnicodeString(&StringU2, &StringU1, TRUE))
-            {
-                DriveLetter = 'A';
-            }
-            else if (RtlPrefixUnicodeString(&StringU3, &StringU1, TRUE))
-            {
-                DriveLetter = 'D';
-            }
+            if (RtlPrefixUnicodeString(&FloppyPrefix, &DeviceName, TRUE))
+                DriveLetter = 'A'; /* If floppy, start at A */
+            else if (RtlPrefixUnicodeString(&CdPrefix, &DeviceName, TRUE))
+                DriveLetter = 'D'; /* If CD-ROM, start at D */
             else
-            {
-                DriveLetter = 'C';
-            }
+                DriveLetter = 'C'; /* Otherwise, start at C */
 
             /* Try any drive letter */
-            while (HalpSetMountLetter(&StringU1, DriveLetter) != STATUS_SUCCESS)
+            while (HalpSetMountLetter(&DeviceName, DriveLetter) != STATUS_SUCCESS)
             {
                 ++DriveLetter;
-
                 if (DriveLetter > 'Z')
-                {
                     break;
-                }
             }
 
             /* If we're beyond Z (ie, no slot left) */
@@ -1361,7 +1289,7 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
             {
                 /* Delete Z, and reuse it for system */
                 HalpDeleteMountLetter('Z');
-                HalpSetMountLetter(&StringU1, 'Z');
+                HalpSetMountLetter(&DeviceName, 'Z');
                 *NtSystemPath = 'Z';
             }
             else
@@ -1371,7 +1299,7 @@ xHalIoAssignDriveLetters(IN PLOADER_PARAMETER_BLOCK LoaderBlock,
             }
         }
 
-        RtlFreeUnicodeString(&StringU1);
+        RtlFreeUnicodeString(&DeviceName);
     }
 
     /* Enable auto assignment for MountMgr */
@@ -2016,9 +1944,7 @@ xHalIoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
             if (PartitionType != PARTITION_ENTRY_UNUSED)
             {
                 /* Check if it's bootable */
-                PartitionInfo->BootIndicator = PartitionDescriptor->
-                                               ActiveFlag & 0x80 ?
-                                               TRUE : FALSE;
+                PartitionInfo->BootIndicator = !!(PartitionDescriptor->ActiveFlag & 0x80);
 
                 /* Check if it's a container */
                 if (IsContainerPartition(PartitionType))
