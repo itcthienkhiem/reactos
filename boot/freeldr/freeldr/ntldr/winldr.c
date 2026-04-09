@@ -263,17 +263,16 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
         List_PaToVa(&Extension->BootApplicationPersistentData);
     }
 
-#ifdef _M_IX86
-    /* Set headless block pointer */
+    /* Set the headless block pointer */
     if (WinLdrTerminalConnected)
     {
         Extension->HeadlessLoaderBlock = &WinLdrSystemBlock->HeadlessLoaderBlock;
         RtlCopyMemory(Extension->HeadlessLoaderBlock,
                       &LoaderRedirectionInformation,
-                      sizeof(HEADLESS_LOADER_BLOCK));
+                      sizeof(LoaderRedirectionInformation));
         Extension->HeadlessLoaderBlock = PaToVa(Extension->HeadlessLoaderBlock);
     }
-#endif
+
     /* Load drivers database */
     RtlStringCbCopyA(MiscFiles, sizeof(MiscFiles), BootPath);
     RtlStringCbCatA(MiscFiles, sizeof(MiscFiles), "AppPatch\\drvmain.sdb");

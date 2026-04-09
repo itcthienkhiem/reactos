@@ -48,9 +48,7 @@ typedef struct _LOADER_SYSTEM_BLOCK
     LOADER_PARAMETER_BLOCK LoaderBlock;
     LOADER_PARAMETER_EXTENSION Extension;
     SETUP_LOADER_BLOCK SetupBlock;
-#ifdef _M_IX86
     HEADLESS_LOADER_BLOCK HeadlessLoaderBlock;
-#endif
     NLS_DATA_BLOCK NlsDataBlock;
     CHAR LoadOptions[MAX_OPTIONS_LENGTH+1];
     CHAR ArcBootDeviceName[MAX_PATH+1];
