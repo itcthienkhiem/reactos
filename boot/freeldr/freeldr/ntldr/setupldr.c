@@ -831,5 +831,6 @@ LoadReactOSSetup(
     return LoadAndBootWindowsCommon(_WIN32_WINNT_WS03,
                                     LoaderBlock,
                                     BootOptions,
+                                    SystemPartition,
                                     BootPath);
 }

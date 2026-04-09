@@ -52,7 +52,7 @@ typedef struct _LOADER_SYSTEM_BLOCK
     NLS_DATA_BLOCK NlsDataBlock;
     CHAR LoadOptions[MAX_OPTIONS_LENGTH+1];
     CHAR ArcBootDeviceName[MAX_PATH+1];
-    // CHAR ArcHalDeviceName[MAX_PATH];
+    CHAR ArcHalDeviceName[MAX_PATH+1];
     CHAR NtBootPathName[MAX_PATH+1];
     CHAR NtHalPathName[MAX_PATH+1];
     ARC_DISK_INFORMATION ArcDiskInformation;
@@ -124,13 +124,6 @@ WinLdrAddDriverToList(
 
 // winldr.c
 VOID
-WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
-                       PCSTR Options,
-                       PCSTR SystemPath,
-                       PCSTR BootPath,
-                       USHORT VersionToBoot);
-
-VOID
 WinLdrpDumpMemoryDescriptors(PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 VOID
@@ -141,10 +134,11 @@ WinLdrpDumpArcDisks(PLOADER_PARAMETER_BLOCK LoaderBlock);
 
 ARC_STATUS
 LoadAndBootWindowsCommon(
-    IN USHORT OperatingSystemVersion,
-    IN PLOADER_PARAMETER_BLOCK LoaderBlock,
-    IN PCSTR BootOptions,
-    IN PCSTR BootPath);
+    _In_ USHORT OperatingSystemVersion,
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PCSTR BootOptions,
+    _In_ PCSTR SystemPartition,
+    _In_ PCSTR BootPath);
 
 VOID
 WinLdrSetupMachineDependent(PLOADER_PARAMETER_BLOCK LoaderBlock);

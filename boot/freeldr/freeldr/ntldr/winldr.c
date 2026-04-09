@@ -121,39 +121,49 @@ AllocateAndInitLPB(
 }
 
 // Init "phase 1"
-VOID
-WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
-                       PCSTR Options,
-                       PCSTR SystemRoot,
-                       PCSTR BootPath,
-                       USHORT VersionToBoot)
+static VOID
+WinLdrInitializePhase1(
+    _In_ USHORT OperatingSystemVersion,
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PCSTR BootOptions,
+    _In_ PCSTR SystemPartition,
+    _In_ PCSTR BootPath)
 {
     /*
      * Examples of correct options and paths:
-     * CHAR Options[] = "DEBUGPORT=COM1 BAUDRATE=115200";
-     * CHAR Options[] = "NODEBUG";
-     * CHAR SystemRoot[] = "\\WINNT\\";
-     * CHAR ArcBoot[] = "multi(0)disk(0)rdisk(0)partition(1)";
+     * CHAR BootOptions[] = "DEBUGPORT=COM1 BAUDRATE=115200";
+     * CHAR SystemPartition[] = "multi(0)disk(0)rdisk(0)partition(1)";
+     * CHAR BootPath[] = "multi(0)disk(0)rdisk(0)partition(2)\\ReactOS\\";
+     * --> ArcBootDevice = "multi(0)disk(0)rdisk(0)partition(2)"
+     *     SystemRoot = "\\ReactOS\\"
      */
-
     CHAR  HalPath[] = "\\";
-    CHAR  ArcBoot[MAX_PATH+1];
-    CHAR  MiscFiles[MAX_PATH+1];
+    CHAR  FilePath[MAX_PATH+1];
     ULONG i;
-    ULONG_PTR PathSeparator;
     PLOADER_PARAMETER_EXTENSION Extension;
 
-    /* Construct SystemRoot and ArcBoot from SystemPath */
-    PathSeparator = strstr(BootPath, "\\") - BootPath;
-    RtlStringCbCopyNA(ArcBoot, sizeof(ArcBoot), BootPath, PathSeparator);
+    /* Convert BootPath to SystemRoot. Attempt to handle paths like:
+     * "multi(0)disk(0)rdisk(0)partition(2)ReactOS\\weird)name"
+     * where SystemRoot would be: "ReactOS\\weird)name" */
+    PCSTR SystemRoot = BootPath + strcspn(BootPath, "\\");
+    PCSTR LastParen;
 
-    TRACE("ArcBoot: '%s'\n", ArcBoot);
-    TRACE("SystemRoot: '%s'\n", SystemRoot);
-    TRACE("Options: '%s'\n", Options);
+    CHAR Sep = *SystemRoot;
+    *(PSTR)SystemRoot = ANSI_NULL;
+    LastParen = strrchr(BootPath, ')');
+    *(PSTR)SystemRoot = Sep;
+    if (LastParen && (LastParen < SystemRoot))
+        SystemRoot = (LastParen + 1);
 
-    /* Fill ARC BootDevice */
+    TRACE("SystemPartition: '%s'\n", SystemPartition);
+    TRACE("ArcBootDevice:   '%.*s'\n", (SystemRoot - BootPath), BootPath);
+    TRACE("SystemRoot:      '%s'\n", SystemRoot);
+    TRACE("BootOptions:     '%s'\n", BootOptions);
+
+    /* Fill the OS boot partition ARC device path */
     LoaderBlock->ArcBootDeviceName = WinLdrSystemBlock->ArcBootDeviceName;
-    RtlStringCbCopyA(LoaderBlock->ArcBootDeviceName, sizeof(WinLdrSystemBlock->ArcBootDeviceName), ArcBoot);
+    RtlStringCbCopyNA(LoaderBlock->ArcBootDeviceName, sizeof(WinLdrSystemBlock->ArcBootDeviceName),
+                      BootPath, (SystemRoot - BootPath) * sizeof(CHAR));
     LoaderBlock->ArcBootDeviceName = PaToVa(LoaderBlock->ArcBootDeviceName);
 
 //
@@ -165,7 +175,7 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
     {
         PSETUP_LOADER_BLOCK SetupBlock = LoaderBlock->SetupLdrBlock;
 
-        /* Adjust the ARC path in the setup block - Matches ArcBoot path */
+        /* Adjust the ARC path in the setup block - Matches ArcBootDeviceName */
         SetupBlock->ArcSetupDeviceName = WinLdrSystemBlock->ArcBootDeviceName;
         SetupBlock->ArcSetupDeviceName = PaToVa(SetupBlock->ArcSetupDeviceName);
 
@@ -173,8 +183,9 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
         LoaderBlock->SetupLdrBlock = PaToVa(LoaderBlock->SetupLdrBlock);
     }
 
-    /* Fill ARC HalDevice, it matches ArcBoot path */
-    LoaderBlock->ArcHalDeviceName = WinLdrSystemBlock->ArcBootDeviceName;
+    /* Fill the firmware system loader / "HAL" partition ARC device path */
+    LoaderBlock->ArcHalDeviceName = WinLdrSystemBlock->ArcHalDeviceName;
+    RtlStringCbCopyA(LoaderBlock->ArcHalDeviceName, sizeof(WinLdrSystemBlock->ArcHalDeviceName), SystemPartition);
     LoaderBlock->ArcHalDeviceName = PaToVa(LoaderBlock->ArcHalDeviceName);
 
     /* Fill SystemRoot */
@@ -189,7 +200,7 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
 
     /* Fill LoadOptions */
     LoaderBlock->LoadOptions = WinLdrSystemBlock->LoadOptions;
-    RtlStringCbCopyA(LoaderBlock->LoadOptions, sizeof(WinLdrSystemBlock->LoadOptions), Options);
+    RtlStringCbCopyA(LoaderBlock->LoadOptions, sizeof(WinLdrSystemBlock->LoadOptions), BootOptions);
     LoaderBlock->LoadOptions = PaToVa(LoaderBlock->LoadOptions);
 
     /* ARC devices */
@@ -254,7 +265,7 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
         // FIXME: Extension->AcpiTableSize;
     }
 
-    if (VersionToBoot >= _WIN32_WINNT_VISTA)
+    if (OperatingSystemVersion >= _WIN32_WINNT_VISTA)
     {
         Extension->BootViaWinload = 1;
         Extension->LoaderPerformanceData = PaToVa(&WinLdrSystemBlock->LoaderPerformanceData);
@@ -274,9 +285,9 @@ WinLdrInitializePhase1(PLOADER_PARAMETER_BLOCK LoaderBlock,
     }
 
     /* Load drivers database */
-    RtlStringCbCopyA(MiscFiles, sizeof(MiscFiles), BootPath);
-    RtlStringCbCatA(MiscFiles, sizeof(MiscFiles), "AppPatch\\drvmain.sdb");
-    Extension->DrvDBImage = PaToVa(WinLdrLoadModule(MiscFiles,
+    RtlStringCbCopyA(FilePath, sizeof(FilePath), BootPath);
+    RtlStringCbCatA(FilePath, sizeof(FilePath), "AppPatch\\drvmain.sdb");
+    Extension->DrvDBImage = PaToVa(WinLdrLoadModule(FilePath,
                                                     &Extension->DrvDBSize,
                                                     LoaderRegistryData));
 
@@ -1357,21 +1368,22 @@ LoadAndBootWindows(
     return LoadAndBootWindowsCommon(OperatingSystemVersion,
                                     LoaderBlock,
                                     BootOptions,
+                                    SystemPartition,
                                     BootPath);
 }
 
 ARC_STATUS
 LoadAndBootWindowsCommon(
-    IN USHORT OperatingSystemVersion,
-    IN PLOADER_PARAMETER_BLOCK LoaderBlock,
-    IN PCSTR BootOptions,
-    IN PCSTR BootPath)
+    _In_ USHORT OperatingSystemVersion,
+    _In_ PLOADER_PARAMETER_BLOCK LoaderBlock,
+    _In_ PCSTR BootOptions,
+    _In_ PCSTR SystemPartition,
+    _In_ PCSTR BootPath)
 {
     PLOADER_PARAMETER_BLOCK LoaderBlockVA;
     BOOLEAN Success;
     PLDR_DATA_TABLE_ENTRY KernelDTE;
     KERNEL_ENTRY_POINT KiSystemStartup;
-    PCSTR SystemRoot;
 
     TRACE("LoadAndBootWindowsCommon()\n");
 
@@ -1379,9 +1391,6 @@ LoadAndBootWindowsCommon(
 
     /* Setup redirection support */
     WinLdrSetupEms(BootOptions);
-
-    /* Convert BootPath to SystemRoot */
-    SystemRoot = strstr(BootPath, "\\");
 
     /* Detect hardware */
     UiUpdateProgressBar(20, "Detecting hardware...");
@@ -1426,11 +1435,11 @@ LoadAndBootWindowsCommon(
     PeLdrImportDllLoadCallback = NULL;
 
     /* Initialize Phase 1 - no drivers loading anymore */
-    WinLdrInitializePhase1(LoaderBlock,
+    WinLdrInitializePhase1(OperatingSystemVersion,
+                           LoaderBlock,
                            BootOptions,
-                           SystemRoot,
-                           BootPath,
-                           OperatingSystemVersion);
+                           SystemPartition,
+                           BootPath);
 
     UiUpdateProgressBar(100, NULL);
 
