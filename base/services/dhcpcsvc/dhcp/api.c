@@ -186,8 +186,18 @@ done:
     return ret;
 }
 
-
 /* Function 2 */
+DWORD
+__stdcall
+Server_AcquireParametersByBroadcast(
+    _In_ PDHCP_SERVER_NAME ServerName,
+    _In_ LPWSTR AdapterName)
+{
+    DPRINT1("Server_AcquireParametersByBroadcast(%S) is unimplemented!\n", AdapterName);
+    return ERROR_SUCCESS;
+}
+
+/* Function 3 */
 DWORD
 __stdcall
 Server_ReleaseParameters(
@@ -226,7 +236,7 @@ done:
     return ret;
 }
 
-/* Function 3 */
+/* Function 4 */
 DWORD
 __stdcall
 Server_FallbackRefreshParams(
@@ -269,41 +279,6 @@ done:
     return ret;
 }
 
-/* Function 4 */
-DWORD
-__stdcall
-Server_QueryHWInfo(
-    _In_ PDHCP_SERVER_NAME ServerName,
-    _In_ DWORD AdapterIndex,
-    _Out_ PDWORD MediaType,
-    _Out_ PDWORD Mtu,
-    _Out_ PDWORD Speed)
-{
-    PDHCP_ADAPTER Adapter;
-    DWORD ret = ERROR_SUCCESS;
-
-    DPRINT("Server_QueryHWInfo()\n");
-
-    ApiLock();
-
-    Adapter = AdapterFindIndex(AdapterIndex);
-    if (Adapter == NULL)
-    {
-        ret = ERROR_FILE_NOT_FOUND;
-        goto done;
-    }
-
-    DPRINT("Adapter: %p\n", Adapter);
-
-    *MediaType = Adapter->IfMib.dwType;
-    *Mtu = Adapter->IfMib.dwMtu;
-    *Speed = Adapter->IfMib.dwSpeed;
-
-done:
-    ApiUnlock();
-
-    return ret;
-}
 
 /* Function 5 */
 DWORD

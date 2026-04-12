@@ -38,26 +38,23 @@ interface dhcpcsvc
     /* Function 2 */
     DWORD
     __stdcall
-    ReleaseParameters(
+    AcquireParametersByBroadcast(
         [in, string, unique] PDHCP_SERVER_NAME ServerName,
         [in, string] LPWSTR AdapterName);
 
     /* Function 3 */
     DWORD
     __stdcall
-    FallbackRefreshParams(
+    ReleaseParameters(
         [in, string, unique] PDHCP_SERVER_NAME ServerName,
         [in, string] LPWSTR AdapterName);
 
     /* Function 4 */
     DWORD
     __stdcall
-    QueryHWInfo(
+    FallbackRefreshParams(
         [in, string, unique] PDHCP_SERVER_NAME ServerName,
-        [in] DWORD AdapterIndex,
-        [out] PDWORD MediaType,
-        [out] PDWORD Mtu,
-        [out] PDWORD Speed);
+        [in, string] LPWSTR AdapterName);
 
     /* Function 5 */
     DWORD

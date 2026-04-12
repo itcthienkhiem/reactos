@@ -6,7 +6,7 @@
 # COPYRIGHT:   Copyright 2006 Ge van Geldorp <gvg@reactos.org>
 #
 @ stdcall DhcpAcquireParameters(wstr)
-@ stub DhcpAcquireParametersByBroadcast
+@ stdcall DhcpAcquireParametersByBroadcast(wstr)
 @ stdcall DhcpCApiCleanup()
 @ stdcall DhcpCApiInitialize(ptr)
 @ stub DhcpDelPersistentRequestParams
@@ -22,7 +22,7 @@
 @ stub DhcpNotifyMediaReconnected
 @ stub DhcpOpenGlobalEvent
 @ stub DhcpPersistentRequestParams
-@ stdcall DhcpQueryHWInfo(long ptr ptr ptr)
+@ stub DhcpQueryHWInfo
 @ stub DhcpRegisterOptions
 @ stub DhcpRegisterParamChange
 @ stub DhcpReleaseIpAddressLease

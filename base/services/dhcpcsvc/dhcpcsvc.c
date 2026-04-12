@@ -261,6 +261,38 @@ DhcpAcquireParameters(
 }
 
 /*!
+ * Renews a DHCP Lease
+ *
+ * \param[in] AdapterName
+ *        Name (GUID) of the Adapter
+ *
+ * \return ERROR_SUCCESS on success
+ *
+ * \remarks Undocumented by Microsoft
+ */
+DWORD
+APIENTRY
+DhcpAcquireParametersByBroadcast(
+    _In_ PWSTR AdapterName)
+{
+    DWORD ret;
+
+    DPRINT("DhcpAcquireParametersByBroadcast(%S)\n", AdapterName);
+
+    RpcTryExcept
+    {
+        ret = Client_AcquireParametersByBroadcast(NULL, AdapterName);
+    }
+    RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+    {
+        ret = I_RpcMapWin32Status(RpcExceptionCode());
+    }
+    RpcEndExcept;
+
+    return ret;
+}
+
+/*!
  * Enumerates the DHCP user classes for the given adapter
  *
  * \param[in] Unknown1
@@ -529,29 +561,6 @@ DhcpNotifyConfigChangeEx(
     }
 
     return ret;
-}
-
-DWORD APIENTRY
-DhcpQueryHWInfo(DWORD AdapterIndex,
-                PDWORD MediaType,
-                PDWORD Mtu,
-                PDWORD Speed)
-{
-    DWORD ret;
-
-    DPRINT("DhcpQueryHWInfo()\n");
-
-    RpcTryExcept
-    {
-        ret = Client_QueryHWInfo(NULL, AdapterIndex, MediaType, Mtu, Speed);
-    }
-    RpcExcept(EXCEPTION_EXECUTE_HANDLER)
-    {
-        ret = I_RpcMapWin32Status(RpcExceptionCode());
-    }
-    RpcEndExcept;
-
-    return (ret == ERROR_SUCCESS) ? 1 : 0;
 }
 
 /*!
