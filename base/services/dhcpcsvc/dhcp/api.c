@@ -78,6 +78,73 @@ ShutdownRpc(VOID)
 /* Function 0 */
 DWORD
 __stdcall
+Server_EnableDhcp(
+    _In_ PDHCP_SERVER_NAME ServerName,
+    _In_ LPWSTR AdapterName,
+    _In_ BOOL Enable)
+{
+    PDHCP_ADAPTER Adapter;
+    struct protocol* proto;
+    DWORD ret = ERROR_SUCCESS;
+
+    DPRINT1("Server_EnableDhcp(%S %u)\n", AdapterName, Enable);
+
+    ApiLock();
+
+    Adapter = AdapterFindName(AdapterName);
+    if (Adapter == NULL)
+    {
+        ret = ERROR_FILE_NOT_FOUND;
+        goto done;
+    }
+
+    DPRINT1("Adapter: %p\n", Adapter);
+
+    if (Enable)
+    {
+        DPRINT1("Enable DHCP for Adapter: %p\n", Adapter);
+
+        if (Adapter->DhclientState.state != S_STATIC)
+        {
+            DPRINT1("The Adapter is already enabled!\n");
+            goto done;
+        }
+
+        add_protocol(Adapter->DhclientInfo.name,
+                     Adapter->DhclientInfo.rfdesc, got_one,
+                     &Adapter->DhclientInfo);
+
+        Adapter->DhclientInfo.client->state = S_INIT;
+        state_reboot(&Adapter->DhclientInfo);
+    }
+    else
+    {
+        DPRINT1("Disable DHCP for Adapter: %p\n", Adapter);
+
+        if (Adapter->DhclientState.state == S_STATIC)
+        {
+            DPRINT1("The Adapter is already disabled!\n");
+            goto done;
+        }
+
+        Adapter->DhclientState.state = S_STATIC;
+        proto = find_protocol_by_adapter(&Adapter->DhclientInfo);
+        if (proto)
+            remove_protocol(proto);
+    }
+
+    if (hAdapterStateChangedEvent != NULL)
+        SetEvent(hAdapterStateChangedEvent);
+
+done:
+    ApiUnlock();
+
+    return ret;
+}
+
+/* Function 1 */
+DWORD
+__stdcall
 Server_AcquireParameters(
     _In_ PDHCP_SERVER_NAME ServerName,
     _In_ LPWSTR AdapterName)
@@ -120,7 +187,7 @@ done:
 }
 
 
-/* Function 1 */
+/* Function 2 */
 DWORD
 __stdcall
 Server_ReleaseParameters(
@@ -159,7 +226,7 @@ done:
     return ret;
 }
 
-/* Function 2 */
+/* Function 3 */
 DWORD
 __stdcall
 Server_FallbackRefreshParams(
@@ -202,7 +269,7 @@ done:
     return ret;
 }
 
-/* Function 3 */
+/* Function 4 */
 DWORD
 __stdcall
 Server_QueryHWInfo(
@@ -238,7 +305,7 @@ done:
     return ret;
 }
 
-/* Function 4 */
+/* Function 5 */
 DWORD
 __stdcall
 Server_StaticRefreshParams(
@@ -295,7 +362,7 @@ done:
     return ret;
 }
 
-/* Function 5 */
+/* Function 6 */
 DWORD
 __stdcall
 Server_RemoveDNSRegistrations(

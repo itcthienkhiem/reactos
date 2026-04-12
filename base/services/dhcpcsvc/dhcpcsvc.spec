@@ -18,7 +18,7 @@
 @ stub DhcpLeaseIpAddress
 @ stub DhcpLeaseIpAddressEx
 @ stdcall DhcpNotifyConfigChange(ptr ptr long long long long long)
-@ stub DhcpNotifyConfigChangeEx
+@ stdcall DhcpNotifyConfigChangeEx(ptr ptr long long long long long long)
 @ stub DhcpNotifyMediaReconnected
 @ stub DhcpOpenGlobalEvent
 @ stub DhcpPersistentRequestParams

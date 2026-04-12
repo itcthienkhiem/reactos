@@ -60,6 +60,18 @@ DhcpNotifyConfigChange(
 
 DWORD
 APIENTRY
+DhcpNotifyConfigChangeEx(
+    _In_ LPWSTR ServerName,
+    _In_ LPWSTR AdapterName,
+    _In_ BOOL NewIpAddress,
+    _In_ DWORD IpIndex,
+    _In_ DWORD IpAddress,
+    _In_ DWORD SubnetMask,
+    _In_ INT DhcpAction,
+    _In_ DWORD Unknown8);
+
+DWORD
+APIENTRY
 DhcpQueryHWInfo(
     _In_ DWORD AdapterIndex,
     _Out_ PDWORD MediaType,

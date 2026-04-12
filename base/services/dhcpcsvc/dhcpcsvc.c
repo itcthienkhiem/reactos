@@ -412,15 +412,123 @@ DhcpNotifyConfigChange(
     _In_ DWORD SubnetMask,
     _In_ INT DhcpAction)
 {
-    DPRINT1("DHCPCSVC: DhcpNotifyConfigChange not implemented yet\n");
-    DPRINT1("DhcpNotifyConfigChange(%S %S %lu %lu %lu %lu %d)\n",
-            ServerName, AdapterName, NewIpAddress, IpIndex, IpAddress, SubnetMask, DhcpAction);
+    DPRINT("DhcpNotifyConfigChange(%S %S %lu %lu %lu %lu %d)\n",
+           ServerName, AdapterName, NewIpAddress, IpIndex, IpAddress, SubnetMask, DhcpAction);
+    return DhcpNotifyConfigChangeEx(ServerName, AdapterName, NewIpAddress,
+                                    IpIndex, IpAddress, SubnetMask, DhcpAction, 0);
+}
+
+/*!
+ * Set new TCP/IP parameters and notify DHCP client service of this
+ *
+ * \param[in] ServerName
+ *        NULL for local machine
+ *
+ * \param[in] AdapterName
+ *        IPHLPAPI name of adapter to change
+ *
+ * \param[in] NewIpAddress
+ *        TRUE if IP address changes
+
+ * \param[in] IpIndex
+ *        ...
+ *
+ * \param[in] IpAddress
+ *        New IP address (network byte order)
+ *
+ * \param[in] SubnetMask
+ *        New subnet mask (network byte order)
+ *
+ * \param[in] DhcpAction
+ *        0 - don't modify
+ *        1 - enable DHCP
+ *        2 - disable DHCP
+ *
+ * \param[in] Unknown8
+ *        Unknown
+ *
+ * \return ERROR_SUCCESS on success
+ *
+ * \remarks Undocumented by Microsoft
+ */
+DWORD
+APIENTRY
+DhcpNotifyConfigChangeEx(
+    _In_ LPWSTR ServerName,
+    _In_ LPWSTR AdapterName,
+    _In_ BOOL NewIpAddress,
+    _In_ DWORD IpIndex,
+    _In_ DWORD IpAddress,
+    _In_ DWORD SubnetMask,
+    _In_ INT DhcpAction,
+    _In_ DWORD Unknown8)
+{
+    DWORD ret = ERROR_SUCCESS;
+
+    DPRINT1("DHCPCSVC: DhcpNotifyConfigChangeEx not implemented yet\n");
+    DPRINT1("DhcpNotifyConfigChangeEx(%S %S %lu %lu %lu %lu %d %lu)\n",
+            ServerName, AdapterName, NewIpAddress, IpIndex, IpAddress, SubnetMask, DhcpAction, Unknown8);
 
     if (AdapterName == NULL)
         return ERROR_INVALID_PARAMETER;
 
-    UNIMPLEMENTED;
-    return ERROR_SUCCESS;
+    if (DhcpAction == 1) // Enable DHCP
+    {
+        if ((NewIpAddress != FALSE) ||
+            (IpIndex != 0) ||
+            (IpAddress != 0) ||
+            (SubnetMask != 0))
+            return ERROR_INVALID_PARAMETER;
+    }
+    else if (DhcpAction == 2) // Disable DHCP
+    {
+        if ((NewIpAddress == FALSE) ||
+            (IpIndex != 0) ||
+            (IpAddress == 0) ||
+            (SubnetMask == 0))
+            return ERROR_INVALID_PARAMETER;
+    }
+    else if (DhcpAction == 0) // Do not modify
+    {
+
+    }
+    else
+    {
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (DhcpAction == 1) // Enable DHCP
+    {
+        /* TODO: Remove static IP address(es) */
+
+        RpcTryExcept
+        {
+            ret = Server_EnableDhcp(ServerName, AdapterName, TRUE);
+        }
+        RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+        {
+            ret = I_RpcMapWin32Status(RpcExceptionCode());
+        }
+        RpcEndExcept;
+    }
+    else if (DhcpAction == 2) // Disable DHCP
+    {
+        RpcTryExcept
+        {
+            ret = Server_EnableDhcp(ServerName, AdapterName, FALSE);
+        }
+        RpcExcept(EXCEPTION_EXECUTE_HANDLER)
+        {
+            ret = I_RpcMapWin32Status(RpcExceptionCode());
+        }
+        RpcEndExcept;
+    }
+    else if (DhcpAction == 0) // Do not modify
+    {
+
+    }
+
+    return ret;
 }
 
 DWORD APIENTRY
