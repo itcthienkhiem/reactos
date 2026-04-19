@@ -7,7 +7,6 @@ typedef struct
     const INetCfgComponentPrivate  *lpVtblPrivate;
     LONG  ref;
     NetCfgComponentItem * pItem;
-    INetCfgComponentPropertyUi * pProperty;
     INetCfg * pNCfg;
 } INetCfgComponentImpl;
 
@@ -647,8 +646,9 @@ CreateNotificationObject(
         INetCfgComponentPropertyUi_Release(pNCCPU);
         return hr;
     }
-    This->pProperty = pNCCPU;
+
     This->pItem->pNCCC = pNCCC;
+    This->pItem->pProperty = pNCCPU;
 
     return S_OK;
 }
@@ -686,7 +686,7 @@ INetCfgComponent_fnRaisePropertyUi(
     INT_PTR iResult;
     INetCfgComponentImpl * This = (INetCfgComponentImpl*)iface;
 
-    if (!This->pProperty)
+    if (!This->pItem->pProperty)
     {
          hr = CreateNotificationObject(This,iface, pUnk);
          if (FAILED(hr))
@@ -699,7 +699,7 @@ INetCfgComponent_fnRaisePropertyUi(
     dwDefPages = 0;
     Pages = 0;
 
-    hr = INetCfgComponentPropertyUi_MergePropPages(This->pProperty, &dwDefPages, (BYTE**)&hppages, &Pages, hwndParent, NULL);
+    hr = INetCfgComponentPropertyUi_MergePropPages(This->pItem->pProperty, &dwDefPages, (BYTE**)&hppages, &Pages, hwndParent, NULL);
     if (FAILED(hr) || !Pages)
     {
         return hr;
@@ -720,14 +720,14 @@ INetCfgComponent_fnRaisePropertyUi(
     CoTaskMemFree(hppages);
     if (iResult > 0)
     {
-        hr = INetCfgComponentPropertyUi_ApplyProperties(This->pProperty);
+        hr = INetCfgComponentPropertyUi_ApplyProperties(This->pItem->pProperty);
         /* indicate that settings should be stored */
         if (hr == S_OK)
             This->pItem->bChanged = TRUE;
     }
     else if (iResult == 0)
     {
-        hr = INetCfgComponentPropertyUi_CancelProperties(This->pProperty);
+        hr = INetCfgComponentPropertyUi_CancelProperties(This->pItem->pProperty);
     }
     else 
     {
@@ -773,7 +773,6 @@ INetCfgComponent_Constructor (IUnknown * pUnkOuter, REFIID riid, LPVOID * ppv, N
     This->lpVtbl = (const INetCfgComponent*)&vt_NetCfgComponent;
     This->lpVtblBindings = (const INetCfgComponentBindings*)&vt_NetCfgComponentBindings;
     This->lpVtblPrivate = (const INetCfgComponentPrivate*)&vt_NetCfgComponentPrivate;
-    This->pProperty = NULL;
     This->pItem = pItem;
     This->pNCfg = pNCfg;
 
