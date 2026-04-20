@@ -51,8 +51,8 @@ typedef struct tagNetCfgComponentItem
     ULONG Status;               //Y
     BOOL bChanged;              //Y
     LPWSTR pszBinding;
-    INetCfgComponentControl *pNCCC;
-    INetCfgComponentPropertyUi *pProperty;
+    INetCfgComponentControl *pControl;
+    INetCfgComponentPropertyUi *pPropertyUi;
     struct tagNetCfgComponentItem *pNext;
 } NetCfgComponentItem;
 
