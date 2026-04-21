@@ -220,11 +220,11 @@ HRESULT
 WINAPI
 INetCfgComponentPrivate_fnUnknown1(
     INetCfgComponentPrivate *iface,
-    DWORD dwParam1,
+    REFIID iid,
     DWORD dwParam2)
 {
 //    INetCfgComponentImpl *This = impl_from_INetCfgComponentPrivate(iface);
-    ERR("INetCfgComponentPrivate_fnUnknown1(%p %lx %lx)\n", iface, dwParam1, dwParam2);
+    ERR("INetCfgComponentPrivate_fnUnknown1(%p %s %lx)\n", iface, wine_dbgstr_guid(iid), dwParam2);
     return S_OK;
 }
 
