@@ -602,7 +602,7 @@ LoadReactOSSetup(
         }
         /* If none was found, default to enabling debugging */
         if (!DbgLoadOptions)
-            DbgLoadOptions = "/DEBUG";
+            DbgLoadOptions = "DEBUG";
 #if !DBG
         }
 #endif
@@ -626,7 +626,7 @@ LoadReactOSSetup(
              * do not contain explicitly the DEBUG option), since we want
              * to have debugging enabled if possible.
              */
-            OptionsToRemove[0] = "/NODEBUG";
+            OptionsToRemove[0] = "NODEBUG";
             NtLdrGetHigherPriorityOptions(DbgLoadOptions,
                                           &ExtraOptions,
                                           &HigherPriorityOptions);
