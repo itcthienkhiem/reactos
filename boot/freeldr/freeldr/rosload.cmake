@@ -22,12 +22,12 @@ list(APPEND ROSLOAD_SOURCE
     ntldr/conversion.c
     ntldr/headless.c
     ntldr/inffile.c
+    ntldr/ntldropts.c
     ntldr/registry.c
     ntldr/setupldr.c
     ntldr/winldr.c
     ntldr/wlmemory.c
-    ntldr/wlregistry.c
-)
+    ntldr/wlregistry.c)
 
 if(ARCH STREQUAL "i386")
 
