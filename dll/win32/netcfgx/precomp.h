@@ -53,6 +53,7 @@ typedef struct tagNetCfgComponentItem
     LPWSTR pszBinding;
     INetCfgComponentControl *pControl;
     INetCfgComponentPropertyUi *pPropertyUi;
+    INetCfgComponentSetup *pSetup;
     struct tagNetCfgComponentItem *pNext;
 } NetCfgComponentItem;
 
