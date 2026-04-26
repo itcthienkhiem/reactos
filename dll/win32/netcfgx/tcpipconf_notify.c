@@ -3137,7 +3137,7 @@ INetCfgComponentPropertyUi_fnSetContext(
         pAdapter = This->pAdapterListHead;
         while (pAdapter)
         {
-            if (!wcsicmp(pAdapter->AdapterName, pAdapterName))
+            if (!_wcsicmp(pAdapter->AdapterName, pAdapterName))
             {
                 This->pCurrentAdapter = pAdapter;
                 break;
