@@ -5,3 +5,13 @@
 @ stdcall RegSetKeyValueW(long wstr wstr long ptr long)
 @ stdcall RegLoadMUIStringW(ptr wstr wstr long ptr long wstr)
 @ stdcall RegLoadMUIStringA(ptr str str long ptr long str)
+
+; ETW (Event Tracing for Windows) user-mode provider API (Vista+)
+@ stdcall EventRegister(ptr ptr ptr ptr)
+@ stdcall EventUnregister(int64)
+@ stdcall EventEnabled(int64 ptr)
+@ stdcall EventProviderEnabled(int64 long int64)
+@ stdcall EventWrite(int64 ptr long ptr)
+@ stdcall EventWriteTransfer(int64 ptr ptr ptr long ptr)
+@ stdcall EventWriteString(int64 long int64 wstr)
+@ stdcall EventActivityIdControl(long ptr)

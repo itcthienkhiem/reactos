@@ -253,17 +253,6 @@ static void mbedtls_uninitialize(void)
 }
 #endif /* SONAME_LIBMBEDTLS && !HAVE_COMMONCRYPTO_COMMONDIGEST_H && !__REACTOS__ */
 
-NTSTATUS WINAPI BCryptEnumAlgorithms(ULONG dwAlgOperations, ULONG *pAlgCount,
-                                     BCRYPT_ALGORITHM_IDENTIFIER **ppAlgList, ULONG dwFlags)
-{
-    FIXME("%08x, %p, %p, %08x - stub\n", dwAlgOperations, pAlgCount, ppAlgList, dwFlags);
-
-    *ppAlgList=NULL;
-    *pAlgCount=0;
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
 #define MAGIC_ALG    (('A' << 24) | ('L' << 16) | ('G' << 8) | '0')
 #define MAGIC_HASH   (('H' << 24) | ('A' << 16) | ('S' << 8) | 'H')
 #define MAGIC_KEY    (('K' << 24) | ('E' << 16) | ('Y' << 8) | '0')
@@ -1563,7 +1552,7 @@ NTSTATUS WINAPI BCryptEnumAlgorithms( ULONG dwAlgOperations, ULONG *pAlgCount,
     if (!pAlgCount || !ppAlgList) return STATUS_INVALID_PARAMETER;
 
     /* count matching entries */
-    for (i = 0; i < ARRAY_SIZE(supported_algs); i++)
+    for (i = 0; i < sizeof(supported_algs) / sizeof(supported_algs[0]); i++)
     {
         if (!dwAlgOperations || (supported_algs[i].class_flag & dwAlgOperations))
             count++;
@@ -1573,7 +1562,7 @@ NTSTATUS WINAPI BCryptEnumAlgorithms( ULONG dwAlgOperations, ULONG *pAlgCount,
     if (!list) return STATUS_NO_MEMORY;
 
     count = 0;
-    for (i = 0; i < ARRAY_SIZE(supported_algs); i++)
+    for (i = 0; i < sizeof(supported_algs) / sizeof(supported_algs[0]); i++)
     {
         if (!dwAlgOperations || (supported_algs[i].class_flag & dwAlgOperations))
         {
@@ -3329,7 +3318,7 @@ NTSTATUS WINAPI BCryptDeriveKeyPBKDF2( BCRYPT_ALG_HANDLE algorithm, PUCHAR passw
     {
         const mbedtls_md_info_t *md_info;
         mbedtls_md_type_t md_type;
-        ULONG hash_len, block_count, i, j;
+        ULONG hash_len, block_count, i;
         UCHAR *T = NULL, *U = NULL, *salt_int = NULL;
         ULONG salt_int_len;
         NTSTATUS status = STATUS_SUCCESS;

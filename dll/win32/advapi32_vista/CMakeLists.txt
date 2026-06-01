@@ -12,6 +12,7 @@ include_directories(
 
 list(APPEND SOURCE
     DllMain.c
+    etw.c
     ../advapi32/reg/reg.c
     ${CMAKE_CURRENT_BINARY_DIR}/advapi32_vista.def)
 

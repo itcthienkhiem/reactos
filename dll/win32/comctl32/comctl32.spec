@@ -183,3 +183,5 @@
 @ stdcall DrawShadowText(long wstr long ptr long long long long long)
 @ stdcall -version=0x600+ LoadIconWithScaleDown(long wstr long long long)
 @ stdcall -version=0x600+ LoadIconMetric(long wstr long long)
+344 stdcall TaskDialog(long long wstr wstr wstr long wstr ptr)
+345 stdcall TaskDialogIndirect(ptr ptr ptr ptr)

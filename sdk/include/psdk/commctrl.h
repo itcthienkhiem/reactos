@@ -5255,6 +5255,18 @@ TaskDialogIndirect(
   _Out_opt_ int *,
   _Out_opt_ BOOL *);
 
+HRESULT
+WINAPI
+TaskDialog(
+  _In_opt_ HWND,
+  _In_opt_ HINSTANCE,
+  _In_opt_ PCWSTR,
+  _In_opt_ PCWSTR,
+  _In_opt_ PCWSTR,
+  _In_ TASKDIALOG_COMMON_BUTTON_FLAGS,
+  _In_opt_ PCWSTR,
+  _Out_opt_ int *);
+
 #include <poppack.h>
 
 #endif /* !NOTASKDIALOG */

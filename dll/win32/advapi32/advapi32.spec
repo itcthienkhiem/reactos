@@ -725,3 +725,13 @@
 @ stdcall WriteEncryptedFileRaw(ptr ptr ptr)
 @ stdcall -version=0x600+ RegLoadMUIStringW(ptr wstr wstr long ptr long wstr) advapi32_vista.RegLoadMUIStringW
 @ stdcall -version=0x600+ RegLoadMUIStringA(ptr str str long ptr long str) advapi32_vista.RegLoadMUIStringA
+
+; ETW (Event Tracing for Windows) user-mode provider API (Vista+)
+@ stdcall -version=0x600+ EventRegister(ptr ptr ptr ptr) advapi32_vista.EventRegister
+@ stdcall -version=0x600+ EventUnregister(int64) advapi32_vista.EventUnregister
+@ stdcall -version=0x600+ EventEnabled(int64 ptr) advapi32_vista.EventEnabled
+@ stdcall -version=0x600+ EventProviderEnabled(int64 long int64) advapi32_vista.EventProviderEnabled
+@ stdcall -version=0x600+ EventWrite(int64 ptr long ptr) advapi32_vista.EventWrite
+@ stdcall -version=0x600+ EventWriteTransfer(int64 ptr ptr ptr long ptr) advapi32_vista.EventWriteTransfer
+@ stdcall -version=0x600+ EventWriteString(int64 long int64 wstr) advapi32_vista.EventWriteString
+@ stdcall -version=0x600+ EventActivityIdControl(long ptr) advapi32_vista.EventActivityIdControl

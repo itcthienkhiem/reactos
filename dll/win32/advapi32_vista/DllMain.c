@@ -4,6 +4,9 @@
 BOOL
 RegInitialize(VOID);
 
+VOID
+EtwInitialize(VOID);
+
 BOOL
 WINAPI
 DllMain(HANDLE hDll,
@@ -19,6 +22,8 @@ DllMain(HANDLE hDll,
         {
             return FALSE;
         }
+
+        EtwInitialize();
     }
 
     return TRUE;

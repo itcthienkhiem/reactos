@@ -21,6 +21,7 @@
 
 #include <shtypes.h>
 #include <shlwapi.h>
+#include <propkeydef.h>
 
 #ifndef PSSTDAPI
 #ifdef _PROPSYS_
@@ -154,10 +155,15 @@ void WINAPI ClearPropVariantArray(PROPVARIANT *rgPropVar, UINT cVars);
 void WINAPI ClearVariantArray(VARIANT *rgVar, UINT cVars);
 PSSTDAPI_(ULONG) VariantGetElementCount(REFVARIANT var);
 
+/* PSFormatForDisplay[Alloc] depend on PROPDESC_FORMAT_FLAGS from propsys.h;
+   only declare them when that type is already available to avoid breaking
+   consumers that include propvarutil.h without propsys.h. */
+#ifdef __propsys_h__
 PSSTDAPI PSFormatForDisplay(REFPROPERTYKEY key, REFPROPVARIANT propvar,
                             PROPDESC_FORMAT_FLAGS flags, WCHAR *pszDisplay, DWORD cchDisplay);
 PSSTDAPI PSFormatForDisplayAlloc(REFPROPERTYKEY key, REFPROPVARIANT propvar,
                                  PROPDESC_FORMAT_FLAGS flags, WCHAR **ppszDisplay);
+#endif /* __propsys_h__ */
 
 PSSTDAPI InitVariantFromStrRet(STRRET *pstrret, PCUITEMID_CHILD pidl, VARIANT *pvar);
 PSSTDAPI VariantToStrRet(REFVARIANT pvar, STRRET *pstrret);
