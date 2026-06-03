@@ -359,6 +359,7 @@ MatchEnumTag(
 
     for (i = 0; i < dwNumArg; i++)
     {
+        DPRINT("%S -- %S\n", pwcArg, pEnumTable[i].pwszToken);
         if (MatchToken(pwcArg, pEnumTable[i].pwszToken))
         {
             *pdwValue = pEnumTable[i].dwValue;
@@ -387,9 +388,11 @@ MatchTagsInCmdLine(
             hModule, ppwcArguments, dwCurrentIndex, dwArgCount,
             pttTags, dwTagCount, pdwTagType);
 
+    /* Identify tagged arguments (tag=value) */
     for (i = dwCurrentIndex; i < dwArgCount; i++)
     {
         DPRINT("Argument %lu: %S\n", i, ppwcArguments[i]);
+        pdwTagType[i - dwCurrentIndex] = (DWORD)-1;
 
         /* Skip arguments that do not have a tag */
         pszEqual = wcschr(ppwcArguments[i], L'=');
@@ -403,18 +406,41 @@ MatchTagsInCmdLine(
         pdwTagType[i - dwCurrentIndex] = (DWORD)-1;
         for (j = 0; j < dwTagCount; j++)
         {
-            DPRINT("Test tag %S\n", pttTags[j].pwszTag);
+            DPRINT("Test tag %S -- %S\n", pttTags[j].pwszTag, ppwcArguments[i]);
             if ((wcslen(pttTags[j].pwszTag) == dwTagLength) &&
                 (_wcsnicmp(ppwcArguments[i], pttTags[j].pwszTag, dwTagLength) == 0))
             {
                 DPRINT("Found tag %S\n", pttTags[j].pwszTag);
                 pttTags[j].bPresent = TRUE;
                 pdwTagType[i - dwCurrentIndex] = j;
+
+                /* Remove the tag name from the argument */
+                wcscpy(ppwcArguments[i], pszEqual + 1);
+                break;
             }
         }
     }
 
-    return 0;
+    /* Identify un-tagged arguments (value) */
+    for (i = dwCurrentIndex; i < dwArgCount; i++)
+    {
+        if (pdwTagType[i - dwCurrentIndex] != (DWORD)-1)
+            continue;
+
+        for (j = 0; j < dwTagCount; j++)
+        {
+            DPRINT("Test tag %S\n", pttTags[j].pwszTag);
+            if (pttTags[j].bPresent == FALSE)
+            {
+                DPRINT("Found tag %S\n", pttTags[j].pwszTag);
+                pttTags[j].bPresent = TRUE;
+                pdwTagType[i - dwCurrentIndex] = j;
+                break;
+            }
+        }
+    }
+
+    return ERROR_SUCCESS;
 }
 
 BOOL
